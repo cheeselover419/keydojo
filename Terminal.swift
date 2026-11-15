@@ -53,6 +53,7 @@ final class Terminal: ObservableObject {
     var lastCommand = ""
     var lastOutput: [String] = []
     var lastTypedChars = 0
+    var lastNames: [String] = []   // все команды последней строки
     var events: Set<String> = []
 
     var cwd: String {
@@ -69,7 +70,8 @@ final class Terminal: ObservableObject {
         "student@keydojo \(cwd == FileSystem.home ? "~" : FileSystem.base(cwd)) % "
     }
 
-    func path(_ p: String) -> String { fs.absolute(p, cwd: cwd) }
+    // ~ здесь не раскрывается: это уже сделал разбор строки, а "~" в кавычках — обычное имя
+    func path(_ p: String) -> String { fs.absolute(p, cwd: cwd, tilde: false) }
 
     func resetChecks() {
         lastCommand = ""
@@ -104,7 +106,7 @@ final class Terminal: ObservableObject {
     private func tabKey(_ name: String) {
         switch name {
         case "cmd+t":
-            tabs.append(TermTab(history: tabs[current].history))
+            tabs.append(TermTab(cwd: cwd, history: tabs[current].history))
             current = tabs.count - 1
         case "cmd+w":
             guard tabs.count > 1 else { return }
@@ -268,7 +270,7 @@ final class Terminal: ObservableObject {
                 dirPart = String(word[...slash])
                 prefix = String(word[word.index(after: slash)...])
             }
-            guard let ch = fs.node(path(dirPart.isEmpty ? "." : dirPart))?.children else { return }
+            guard let ch = fs.node(fs.absolute(dirPart.isEmpty ? "." : dirPart, cwd: cwd))?.children else { return }
             names = ch.keys.filter { $0.hasPrefix(prefix) && (prefix.hasPrefix(".") || !$0.hasPrefix(".")) }.sorted()
             for n in names { suffix[n] = ch[n]!.isDir ? "/" : " " }
         }
@@ -298,6 +300,7 @@ final class Terminal: ObservableObject {
         if tabs[current].history.last != line { tabs[current].history.append(line) }
         lastCommand = line
         lastOutput = []
+        lastNames = []
         execute(line)
     }
 
@@ -320,6 +323,32 @@ final class Terminal: ObservableObject {
         l.isEmpty ? "" : l.joined(separator: "\n") + "\n"
     }
 
+    private var variables: [String: String] {
+        ["HOME": FileSystem.home, "USER": "student", "SHELL": "/bin/zsh", "PWD": cwd,
+         "OLDPWD": tabs[current].oldpwd ?? "", "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"]
+    }
+
+    // $NAME или ${NAME}: значение и сколько символов занимает имя
+    private func variable(_ c: [Character], _ start: Int) -> (value: String, len: Int)? {
+        guard start < c.count else { return nil }
+        var name = ""
+        var len = 0
+        if c[start] == "{" {
+            guard let close = c[start...].firstIndex(of: "}") else { return nil }
+            name = String(c[(start + 1)..<close])
+            len = close - start + 1
+        } else {
+            var i = start
+            while i < c.count, c[i] == "_" || c[i].isASCII && (c[i].isLetter || c[i].isNumber && i > start) {
+                name.append(c[i])
+                i += 1
+            }
+            len = i - start
+        }
+        guard !name.isEmpty else { return nil }
+        return (variables[name] ?? "", len)
+    }
+
     private func tokenize(_ s: String) -> [Token]? {
         var tokens: [Token] = []
         var cur: Token?
@@ -330,35 +359,49 @@ final class Terminal: ObservableObject {
             if let c = cur { tokens.append(c) }
             cur = nil
         }
+        func add(_ str: String, quoted: Bool = false) {
+            if cur == nil { cur = Token(text: "") }
+            cur!.text += str
+            if quoted { cur!.quoted = true }
+        }
+        func op(_ o: String) {
+            flush()
+            tokens.append(Token(text: o, op: true))
+        }
         while i < chars.count {
             let c = chars[i]
+            let next: Character? = i + 1 < chars.count ? chars[i + 1] : nil
+            if c == "$", quote != "'", let v = variable(chars, i + 1) {
+                add(v.value, quoted: true)
+                i += 1 + v.len
+                continue
+            }
             if let q = quote {
-                if c == q { quote = nil } else { cur!.text.append(c) }
+                if c == q { quote = nil } else { add(String(c)) }
             } else if c == "\"" || c == "'" {
                 quote = c
-                if cur == nil { cur = Token(text: "") }
-                cur!.quoted = true
-            } else if c == "\\", i + 1 < chars.count {
+                add("", quoted: true)
+            } else if c == "\\", let n = next {
+                add(String(n), quoted: true)
                 i += 1
-                if cur == nil { cur = Token(text: "") }
-                cur!.text.append(chars[i])
-                cur!.quoted = true
             } else if c == " " || c == "\t" {
                 flush()
+            } else if c == "~", cur == nil, next == nil || next == "/" || next == " " {
+                // ~ раскрывается только без кавычек и в начале слова
+                add(FileSystem.home)
             } else if c == "|" {
-                flush()
-                tokens.append(Token(text: "|", op: true))
+                if next == "|" { op("||"); i += 1 } else { op("|") }
+            } else if c == "&", next == "&" {
+                op("&&")
+                i += 1
+            } else if c == ";" {
+                op(";")
+            } else if c == "<" {
+                op("<")
             } else if c == ">" {
-                flush()
-                if i + 1 < chars.count, chars[i + 1] == ">" {
-                    tokens.append(Token(text: ">>", op: true))
-                    i += 1
-                } else {
-                    tokens.append(Token(text: ">", op: true))
-                }
+                if next == ">" { op(">>"); i += 1 } else { op(">") }
             } else {
-                if cur == nil { cur = Token(text: "") }
-                cur!.text.append(c)
+                add(String(c))
             }
             i += 1
         }
@@ -377,54 +420,93 @@ final class Terminal: ObservableObject {
         return found.isEmpty ? nil : found.map { dirPart + $0 }
     }
 
+    // строка делится на части по ; && ||, каждая часть — конвейер
     private func execute(_ line: String) {
         guard let tokens = tokenize(line) else { err("zsh: unmatched quote"); return }
+        var parts: [(cond: String, tokens: [Token])] = [(";", [])]
+        for t in tokens {
+            if t.op && [";", "&&", "||"].contains(t.text) {
+                parts.append((t.text, []))
+            } else {
+                parts[parts.count - 1].tokens.append(t)
+            }
+        }
+        for (n, p) in parts.enumerated() where p.tokens.isEmpty {
+            let last = n == parts.count - 1
+            if last && p.cond == ";" { continue }
+            err("zsh: parse error near `\(last ? p.cond : parts[n + 1].cond)'")
+            return
+        }
+        lastNames = []
+        var ok = true
+        for p in parts where !p.tokens.isEmpty {
+            if p.cond == "&&" && !ok { continue }
+            if p.cond == "||" && ok { continue }
+            ok = pipeline(p.tokens)
+            if mode != .shell { return }
+        }
+    }
+
+    // true, если последняя команда завершилась без ошибки
+    private func pipeline(_ tokens: [Token]) -> Bool {
         var segments: [[String]] = [[]]
         var redirect: (path: String, append: Bool)?
+        var input: String?
         var i = 0
         while i < tokens.count {
             let t = tokens[i]
             if t.op && t.text == "|" {
                 segments.append([])
             } else if t.op {
-                guard i + 1 < tokens.count, !tokens[i + 1].op else { err("zsh: parse error near `\\n'"); return }
-                redirect = (tokens[i + 1].text, t.text == ">>")
+                guard i + 1 < tokens.count, !tokens[i + 1].op else { err("zsh: parse error near `\\n'"); return false }
+                let target = tokens[i + 1].text
+                if t.text == "<" {
+                    guard let n = fs.node(path(target)), !n.isDir else {
+                        err("zsh: no such file or directory: \(target)")
+                        return false
+                    }
+                    input = n.content
+                } else {
+                    redirect = (target, t.text == ">>")
+                }
                 i += 1
             } else {
-                guard let words = expand(t) else { err("zsh: no matches found: \(t.text)"); return }
+                guard let words = expand(t) else { err("zsh: no matches found: \(t.text)"); return false }
                 segments[segments.count - 1] += words
             }
             i += 1
         }
-        if segments.contains(where: { $0.isEmpty }) { err("zsh: parse error near `|'"); return }
+        if segments.contains(where: { $0.isEmpty }) { err("zsh: parse error near `|'"); return false }
+        lastNames += segments.map { $0[0] }
 
+        failed = false
         if segments.count == 1, redirect == nil {
             let args = segments[0]
             let arg = args.dropFirst().first
             switch args[0] {
-            case "clear": lines = []; return
-            case "nano": openNano(arg); return
-            case "vim", "vi": openVim(arg); return
-            case "less", "more": openLess(arg, text: nil); return
+            case "clear": lines = []; return true
+            case "nano": openNano(arg); return !failed
+            case "vim", "vi": openVim(arg); return !failed
+            case "less", "more": openLess(arg, text: input); return !failed
             case "tail" where args.contains("-f"):
-                failed = false
-                out(command(args, stdin: nil, tty: true))
+                out(command(args, stdin: input, tty: true))
                 if !failed {
                     mode = .running
                     events.insert("tailf")
                 }
-                return
+                return !failed
             default: break
             }
         }
 
-        var data: String?
+        var data = input
         for (n, args) in segments.enumerated() {
             let last = n == segments.count - 1
             if last, n > 0, redirect == nil, ["less", "more"].contains(args[0]) {
                 openLess(args.dropFirst().first, text: data)
-                return
+                return true
             }
+            failed = false
             data = command(args, stdin: data, tty: last && redirect == nil)
         }
         let result = data ?? ""
@@ -439,6 +521,7 @@ final class Terminal: ObservableObject {
             out(result)
             lastOutput = textLines(result)
         }
+        return !failed
     }
 
     private func split(_ args: [String]) -> (flags: Set<Character>, rest: [String]) {
@@ -486,9 +569,14 @@ final class Terminal: ObservableObject {
         let all = f.contains("a"), long = f.contains("l")
         let targets = paths.isEmpty ? ["."] : paths
         var res: [String] = []
+        var files: [String] = []
+        var dirs: [(String, FSNode, [String: FSNode])] = []
         for p in targets {
             guard let n = fs.node(path(p)) else { err("ls: \(p): No such file or directory"); continue }
-            guard let ch = n.children else { res.append(long ? longLine(p, n) : p); continue }
+            if let ch = n.children { dirs.append((p, n, ch)) } else { files.append(long ? longLine(p, n) : p) }
+        }
+        if !files.isEmpty { res += tty && !long ? [files.joined(separator: "  ")] : files }
+        for (p, n, ch) in dirs {
             if targets.count > 1 {
                 if !res.isEmpty { res.append("") }
                 res.append("\(p):")
@@ -514,7 +602,9 @@ final class Terminal: ObservableObject {
     }
 
     private func cd(_ args: [String]) -> String {
-        var target = args.first ?? "~"
+        if args.count == 2 { err("cd: string not in pwd: \(args[0])"); return "" }
+        if args.count > 2 { err("cd: too many arguments"); return "" }
+        var target = args.first ?? FileSystem.home
         var show = false
         if target == "-" {
             guard let old = tabs[current].oldpwd else { err("cd: OLDPWD not set"); return "" }
@@ -574,6 +664,10 @@ final class Terminal: ObservableObject {
                 continue
             }
             let target = fs.absolute(dstIsDir ? dstAbs + "/" + FileSystem.base(srcAbs) : dstAbs, cwd: "/")
+            if target == srcAbs && !move {
+                err("cp: \(src) and \(dst) are identical (not copied).")
+                continue
+            }
             if target == srcAbs || target.hasPrefix(srcAbs + "/") || srcAbs == "/" {
                 err("\(cmd): \(src): Invalid argument")
                 continue
@@ -624,7 +718,11 @@ final class Terminal: ObservableObject {
         while i < args.count {
             let a = args[i]
             if a == "-n", i + 1 < args.count {
-                count = Int(args[i + 1]) ?? count
+                guard let v = Int(args[i + 1]), v >= 0 else {
+                    err(name == "head" ? "head: illegal line count -- \(args[i + 1])" : "tail: illegal offset -- \(args[i + 1])")
+                    return ""
+                }
+                count = v
                 i += 2
                 continue
             }
@@ -737,6 +835,7 @@ final class Terminal: ObservableObject {
         var files = Array(ops.dropFirst())
         if files.isEmpty && !rec {
             scan(stdin ?? "", nil)
+            if res.isEmpty { failed = true }
             return joined(res)
         }
         if files.isEmpty { files = ["."] }
@@ -750,6 +849,7 @@ final class Terminal: ObservableObject {
                 scan(n.content, multi ? p : nil)
             }
         }
+        if res.isEmpty { failed = true }
         return joined(res)
     }
 
@@ -792,7 +892,7 @@ final class Terminal: ObservableObject {
                 switch key.name {
                 case "enter":
                     n.prompt = nil
-                    guard !text.isEmpty, fs.write(path(text), n.text) else {
+                    guard !text.isEmpty, fs.write(fs.absolute(text, cwd: cwd), n.text) else {
                         n.message = "[ Error writing \(text) ]"
                         return
                     }
@@ -967,8 +1067,9 @@ final class Terminal: ObservableObject {
         case .normal:
             v.message = nil
             let len = v.buf.lines[v.buf.row].count
-            let d = v.pendingD
+            let d = v.pendingD, g = v.pendingG
             v.pendingD = false
+            v.pendingG = false
             switch key.printable ?? key.name {
             case "i": v.vmode = .insert
             case "a": v.buf.col = min(v.buf.col + 1, len); v.vmode = .insert
@@ -992,6 +1093,13 @@ final class Terminal: ObservableObject {
             case "0": v.buf.col = 0
             case "$": v.buf.col = len
             case "G": v.buf.row = v.buf.lines.count - 1; v.buf.col = 0
+            case "g":
+                if g {
+                    v.buf.row = 0
+                    v.buf.col = 0
+                } else {
+                    v.pendingG = true
+                }
             case "x":
                 if v.buf.col < len {
                     v.buf.deleteForward()
@@ -1075,6 +1183,8 @@ final class Terminal: ObservableObject {
         case "g", "<": l.top = 0
         case "G", ">": l.top = l.maxTop
         case "/": l.prompt = ""
+        case "n" where l.query.isEmpty, "N" where l.query.isEmpty:
+            l.message = "No previous regular expression"
         case "n":
             if !l.find(from: l.top + 1, forward: true) { l.message = "Pattern not found  (press RETURN)" }
         case "N":
@@ -1198,6 +1308,7 @@ struct Vim {
     var vmode = VMode.normal
     var modified = false
     var pendingD = false
+    var pendingG = false
 }
 
 struct Less {

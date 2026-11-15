@@ -43,9 +43,9 @@ final class FileSystem {
         NSPredicate(format: ignoreCase ? "SELF LIKE[c] %@" : "SELF LIKE %@", pattern).evaluate(with: name)
     }
 
-    func absolute(_ path: String, cwd: String) -> String {
+    func absolute(_ path: String, cwd: String, tilde: Bool = true) -> String {
         var p = path
-        if p == "~" { p = Self.home } else if p.hasPrefix("~/") { p = Self.home + p.dropFirst() }
+        if tilde && p == "~" { p = Self.home } else if tilde && p.hasPrefix("~/") { p = Self.home + p.dropFirst() }
         if !p.hasPrefix("/") { p = cwd + "/" + p }
         var out: [String] = []
         for c in Self.parts(p) {

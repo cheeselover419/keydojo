@@ -216,9 +216,19 @@ struct ExerciseView: View {
                     .font(.title3)
                     .fixedSize(horizontal: false, vertical: true)
                 if runner.showHint {
-                    Text(LocalizedStringKey("Подсказка: " + runner.exercise.hint))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Подсказка").font(.caption).foregroundStyle(.secondary)
+                        Text(runner.exercise.hint)
+                            .font(.system(.title3, design: .monospaced).weight(.semibold))
+                        if !runner.exercise.note.isEmpty {
+                            Text(LocalizedStringKey(runner.exercise.note))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.1)))
                 }
                 TerminalScreen(term: runner.term)
                 if runner.solved {
