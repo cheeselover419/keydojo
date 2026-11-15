@@ -8,7 +8,26 @@ struct KeyDojoApp: App {
         WindowGroup {
             ContentView()
         }
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button(tr("О программе KeyDojo", "About KeyDojo")) { showAbout() }
+            }
+        }
     }
+}
+
+// стандартная панель с ссылкой на GitHub, как в KeyMeter
+func showAbout() {
+    let center = NSMutableParagraphStyle()
+    center.alignment = .center
+    let credits = NSAttributedString(string: "github.com/cheeselover419", attributes: [
+        .font: NSFont.systemFont(ofSize: 11),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: center,
+        .link: URL(string: "https://github.com/cheeselover419")!,
+    ])
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
 }
 
 enum Training {
@@ -102,6 +121,14 @@ struct StartView: View {
                 }
                 .keyboardShortcut("s", modifiers: .command)
                 .popover(isPresented: $settings, arrowEdge: .bottom) { SettingsView { settings = false } }
+                Button(action: showAbout) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                        Text(tr("О программе", "About"))
+                        KeyCap(text: "I")
+                    }
+                }
+                .keyboardShortcut("i", modifiers: [])
             }
         }
         .padding()
