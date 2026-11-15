@@ -232,5 +232,14 @@ do {
   check(esc, "Esc завершает экзамен")
 }
 
+// nano: Ctrl+K на последней пустой строке ничего не вырезает
+do {
+  let t = Terminal()
+  (cmd("nano draft.txt") + [k("ctrl+k"), k("ctrl+k"), k("ctrl+k"), k("ctrl+u"), k("ctrl+o"), E, k("ctrl+x")] + cmd("wc -l draft.txt")).forEach(t.handle)
+  let ok = t.lines.last?.hasPrefix("       1 ") == true
+  if !ok { fails += 1 }
+  print(ok ? "ok  " : "FAIL", "nano: Ctrl+K в конце файла не добавляет пустых строк")
+}
+
 print("провалено:", fails)
 if fails > 0 { exit(1) }

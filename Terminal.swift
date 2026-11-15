@@ -978,6 +978,11 @@ final class Terminal: ObservableObject {
             if n.modified { n.prompt = .confirm } else { closeNano() }
         case "ctrl+w": n.prompt = .search("")
         case "ctrl+k":
+            // последняя пустая строка, как в настоящем nano, не вырезается
+            if n.buf.row == n.buf.lines.count - 1 && n.buf.lines[n.buf.row].isEmpty {
+                n.cutChain = chain
+                break
+            }
             let line = n.buf.lines.remove(at: n.buf.row)
             n.cut = chain ? n.cut + [line] : [line]
             if n.buf.lines.isEmpty { n.buf.lines = [""] }
