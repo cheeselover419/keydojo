@@ -17,6 +17,7 @@
 		B10000000000000000000008 /* Exam.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* Exam.swift */; };
 		B10000000000000000000009 /* Sound.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* Sound.swift */; };
 		B10000000000000000000010 /* Sounds in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* Sounds */; };
+		B10000000000000000000011 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* AppIcon.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		B20000000000000000000008 /* Exam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exam.swift; sourceTree = "<group>"; };
 		B20000000000000000000009 /* Sound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sound.swift; sourceTree = "<group>"; };
 		B20000000000000000000010 /* Sounds */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Sounds; sourceTree = "<group>"; };
+		B20000000000000000000011 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B20000000000000000000090 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000091 /* KeyDojo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyDojo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -50,6 +52,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000010 /* Sounds in Resources */,
+				B10000000000000000000011 /* AppIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,6 +72,7 @@
 				B20000000000000000000008 /* Exam.swift */,
 				B20000000000000000000009 /* Sound.swift */,
 				B20000000000000000000010 /* Sounds */,
+				B20000000000000000000011 /* AppIcon.icns */,
 				B20000000000000000000090 /* Info.plist */,
 				B40000000000000000000002 /* Products */,
 			);

@@ -7,6 +7,7 @@ rm -rf $APP
 mkdir -p $APP/Contents/MacOS $APP/Contents/Resources
 cp Info.plist $APP/Contents/
 cp -R Sounds $APP/Contents/Resources/
+cp AppIcon.icns $APP/Contents/Resources/
 # универсальная сборка: Apple Silicon и Intel
 TMP=$(mktemp -d)
 swiftc -O -parse-as-library -target arm64-apple-macos13.0 *.swift -o $TMP/KeyDojo-arm64 &
