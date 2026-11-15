@@ -1,0 +1,15 @@
+# сборка
+KeyDojo.app/
+build/
+
+# Xcode
+xcuserdata/
+
+# Claude
+CLAUDE.md
+.claude/
+
+.DS_Store
+
+# установщик
+*.dmg
