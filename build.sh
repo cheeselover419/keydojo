@@ -8,9 +8,9 @@ mkdir -p $APP/Contents/MacOS $APP/Contents/Resources
 cp Info.plist $APP/Contents/
 # универсальная сборка: Apple Silicon и Intel
 TMP=$(mktemp -d)
-swiftc -O -parse-as-library -target arm64-apple-macos13.0 main.swift -o $TMP/KeyDojo-arm64 &
+swiftc -O -parse-as-library -target arm64-apple-macos13.0 *.swift -o $TMP/KeyDojo-arm64 &
 ARM=$!
-swiftc -O -parse-as-library -target x86_64-apple-macos13.0 main.swift -o $TMP/KeyDojo-x86_64 &
+swiftc -O -parse-as-library -target x86_64-apple-macos13.0 *.swift -o $TMP/KeyDojo-x86_64 &
 INTEL=$!
 wait $ARM
 wait $INTEL
