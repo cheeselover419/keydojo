@@ -530,9 +530,11 @@ struct StatsView: View {
     @ObservedObject private var stats = Stats.shared
     @State private var selected: Int?
     @State private var exams = false
+    @State private var typing = false
 
     var body: some View {
-        if exams { examDetail } else if let i = selected { detail(courses[i]) } else { overview }
+        if typing { PlaceholderView(title: Training.typing.title) { typing = false } }
+        else if exams { examDetail } else if let i = selected { detail(courses[i]) } else { overview }
     }
 
     private var overview: some View {
@@ -589,6 +591,19 @@ struct StatsView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("e", modifiers: [])
+            Button { typing = true } label: {
+                HStack(spacing: 14) {
+                    KeyCap(text: "P")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Training.typing.title).font(.headline)
+                        Text(tr("пока нет данных", "no data yet")).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("p", modifiers: [])
             Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
         }
