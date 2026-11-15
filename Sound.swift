@@ -3,10 +3,10 @@ import AVFoundation
 
 // наборы звуков в Sounds/<имя>: key1…key12, space, enter, backspace; генерируются Tools/synth.py
 enum SoundPack: String, CaseIterable {
-    case thock = "Thock", cream = "Cream", clack = "Clack", click = "Click", tactile = "Tactile", soft = "Soft"
+    case clack = "Clack", bright = "Bright", deep = "Deep", crisp = "Crisp", ring = "Ring", soft = "Soft"
 
     static var current: SoundPack {
-        SoundPack(rawValue: UserDefaults.standard.string(forKey: "keySoundPack") ?? "") ?? .thock
+        SoundPack(rawValue: UserDefaults.standard.string(forKey: "keySoundPack") ?? "") ?? .clack
     }
 }
 

@@ -235,7 +235,7 @@ struct SettingsView: View {
     let close: () -> Void
     @AppStorage("lang") private var lang = Lang.ru
     @AppStorage("keySound") private var keySound = true
-    @AppStorage("keySoundPack") private var pack = SoundPack.thock
+    @AppStorage("keySoundPack") private var pack = SoundPack.clack
     @State private var confirmReset = false
     @State private var resetDone = false
 
