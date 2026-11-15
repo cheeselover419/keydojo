@@ -62,7 +62,7 @@ final class Stats: ObservableObject {
         var days: Set<String> = []     // дни занятий, yyyy-MM-dd
         var time: Double = 0           // секунд в упражнениях
         var exams: [String: ExamStats] = [:]   // ключ — уровень и вариант, «0.full»
-        var typing: [String: TypingStats] = [:]   // ключ — язык и время, «ru.30»
+        var typing: [String: TypingStats] = [:]   // ключ — режим и время, «ru.30», «code.60»
 
         init() {}
 
@@ -108,12 +108,12 @@ final class Stats: ObservableObject {
         save()
     }
 
-    func typing(_ lang: Lang, _ duration: Double) -> TypingStats { data.typing[typingKey(lang, duration)] ?? TypingStats() }
+    func typing(_ mode: TypingMode, _ duration: Double) -> TypingStats { data.typing[typingKey(mode, duration)] ?? TypingStats() }
     var typingRuns: Int { data.typing.values.reduce(0) { $0 + $1.runs } }
     var typingBest: Int { data.typing.values.map(\.bestCpm).max() ?? 0 }
 
-    func typingFinished(lang: Lang, duration: Double, cpm: Int, accuracy: Int) {
-        let key = typingKey(lang, duration)
+    func typingFinished(mode: TypingMode, duration: Double, cpm: Int, accuracy: Int) {
+        let key = typingKey(mode, duration)
         var t = data.typing[key] ?? TypingStats()
         t.runs += 1
         t.bestCpm = max(t.bestCpm, cpm)
@@ -125,7 +125,7 @@ final class Stats: ObservableObject {
         save()
     }
 
-    private func typingKey(_ lang: Lang, _ duration: Double) -> String { "\(lang.rawValue).\(Int(duration))" }
+    private func typingKey(_ mode: TypingMode, _ duration: Double) -> String { "\(mode.rawValue).\(Int(duration))" }
 
     private func examKey(_ level: Int, _ mode: ExamMode) -> String { "\(level).\(mode == .limited ? "limited" : "full")" }
 

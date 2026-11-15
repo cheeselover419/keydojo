@@ -243,11 +243,22 @@ do {
 
 // тренажёр печати
 do {
-  let r = TypingRunner(lang: .ru, duration: 30, words: 50)
+  let r = TypingRunner(mode: .ru, duration: 30, words: 50)
   let t0 = Date()
   let word = String(r.target.prefix { $0 != " " })
   check(r.lines.allSatisfy { $0.count <= 43 } && r.lines.first?.lowerBound == 0 && r.lines.last?.upperBound == r.target.count, "строки покрывают весь текст", "печать")
   check(typingWords(.ru).count > 200 && typingWords(.en).count > 200, "слов больше 200", "печать")
+  for m in [TypingMode.terminal, .python] {
+    let w = typingWords(m)
+    check(w.count > 40 && Set(w).count == w.count && w.allSatisfy { !$0.isEmpty && $0 == $0.trimmingCharacters(in: .whitespaces) }, "\(m.name): больше 40 разных строк без лишних пробелов", "печать")
+  }
+  check(Set(typingWords(.terminal)).isDisjoint(with: typingWords(.python)), "терминал и Python не смешаны", "печать")
+  let code = TypingRunner(mode: .python, duration: 30, words: 20)
+  _ = code.handle(k(";", "ж"))
+  check(code.wrongLayout, "в режиме кода русская буква — не та раскладка", "печать")
+  _ = code.handle(k("backspace"))
+  for c in code.target.prefix(40) { _ = code.handle(k("a", String(c))) }
+  check(code.correctChars == 40, "строки кода набираются со всеми символами", "печать")
   _ = r.handle(k("space", " "), now: t0)
   check(r.mistakes == 1 && r.started == t0, "таймер стартует с первого нажатия, неверная буква — ошибка", "печать")
   _ = r.handle(k("backspace"))
@@ -258,8 +269,9 @@ do {
   check(r.wrongLayout, "латинская буква в русском тексте — не та раскладка", "печать")
   check(!r.handle(k("cmd+r")) && !r.handle(k("enter")), "⌘ и Enter не печатают", "печать")
   r.tick(now: t0.addingTimeInterval(15))
-  check(!r.finished && r.secondsLeft == 15 && r.cpm == 0, "таймер идёт, скорость до конца не считается", "печать")
-  _ = r.handle(k("backspace"))
+  check(!r.finished && r.secondsLeft == 15, "таймер идёт", "печать")
+  _ = r.handle(k("backspace"), now: t0.addingTimeInterval(15))
+  check(r.cpm == word.count * 4, "скорость пересчитывается при нажатии", "печать")
   check(r.correctChars == word.count, "Backspace по ошибке не трогает верные буквы", "печать")
   _ = r.handle(k("backspace"))
   check(r.correctChars == word.count - 1, "Backspace по верной букве убирает её из счёта", "печать")

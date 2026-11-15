@@ -4,26 +4,26 @@ import Charts
 func secondsName(_ d: Double) -> String { tr("\(Int(d)) секунд", "\(Int(d)) seconds") }
 
 struct TypingSetupView: View {
-    let start: (Lang, Double) -> Void
+    let start: (TypingMode, Double) -> Void
     let back: () -> Void
-    @State private var lang: Lang?
+    @State private var mode: TypingMode?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(Training.typing.title).font(.largeTitle.bold())
-            if let lang {
-                Text(tr("Язык: \(lang.name). Выбери время цифрой", "Language: \(lang.name). Choose the time by number")).foregroundStyle(.secondary)
+            if let mode {
+                Text(tr("Режим: \(mode.name). Выбери время цифрой", "Mode: \(mode.name). Choose the time by number")).foregroundStyle(.secondary)
                 ForEach(TypingRunner.durations.indices, id: \.self) { i in
                     numberRow(i + 1, secondsName(TypingRunner.durations[i]),
                               tr("Таймер начнётся с первой нажатой буквы", "The timer starts with the first letter you type")) {
-                        start(lang, TypingRunner.durations[i])
+                        start(mode, TypingRunner.durations[i])
                     }
                 }
             } else {
-                Text(tr("Случайные частые слова. Выбери язык цифрой", "Random common words. Choose a language by number")).foregroundStyle(.secondary)
-                ForEach(Lang.allCases.indices, id: \.self) { i in
-                    let l = Lang.allCases[i]
-                    numberRow(i + 1, l.name, tr("Не забудь переключить раскладку", "Don't forget to switch the keyboard layout")) { lang = l }
+                Text(tr("Выбери режим цифрой", "Choose a mode by number")).foregroundStyle(.secondary)
+                ForEach(TypingMode.allCases.indices, id: \.self) { i in
+                    let m = TypingMode.allCases[i]
+                    numberRow(i + 1, m.name, info(m)) { mode = m }
                 }
             }
             Text(tr("Скорость — верно набранные знаки в минуту, точность — доля нажатий без ошибки.",
@@ -31,11 +31,20 @@ struct TypingSetupView: View {
                 .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
             Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)")) {
-                if lang == nil { back() } else { lang = nil }
+                if mode == nil { back() } else { mode = nil }
             }
             .keyboardShortcut(.cancelAction)
         }
         .padding(28)
+    }
+
+    private func info(_ m: TypingMode) -> String {
+        switch m {
+        case .ru: tr("Случайные частые слова, русская раскладка", "Random common words, Russian layout")
+        case .en: tr("Случайные частые слова, английская раскладка", "Random common words, English layout")
+        case .terminal: tr("Команды терминала: git, grep, find, |, &&, английская раскладка", "Terminal commands: git, grep, find, |, &&, English layout")
+        case .python: tr("Короткие строки кода на Python, английская раскладка", "Short lines of Python code, English layout")
+        }
     }
 }
 
@@ -57,13 +66,13 @@ func numberRow(_ n: Int, _ title: String, _ info: String, action: @escaping () -
 
 // Enter после итогов начинает новый заход с новыми словами
 struct TypingView: View {
-    let lang: Lang
+    let mode: TypingMode
     let duration: Double
     let back: () -> Void
     @State private var attempt = 0
 
     var body: some View {
-        TypingSession(lang: lang, duration: duration, again: { attempt += 1 }, back: back).id(attempt)
+        TypingSession(mode: mode, duration: duration, again: { attempt += 1 }, back: back).id(attempt)
     }
 }
 
@@ -72,8 +81,8 @@ private struct TypingSession: View {
     let again: () -> Void
     let back: () -> Void
 
-    init(lang: Lang, duration: Double, again: @escaping () -> Void, back: @escaping () -> Void) {
-        _runner = StateObject(wrappedValue: TypingRunner(lang: lang, duration: duration))
+    init(mode: TypingMode, duration: Double, again: @escaping () -> Void, back: @escaping () -> Void) {
+        _runner = StateObject(wrappedValue: TypingRunner(mode: mode, duration: duration))
         self.again = again
         self.back = back
     }
@@ -87,7 +96,7 @@ private struct TypingSession: View {
         .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in runner.tick() }
         .onChange(of: runner.finished) { done in
             if done && runner.keystrokes > 0 {
-                Stats.shared.typingFinished(lang: runner.lang, duration: runner.duration, cpm: runner.cpm, accuracy: runner.accuracy)
+                Stats.shared.typingFinished(mode: runner.mode, duration: runner.duration, cpm: runner.cpm, accuracy: runner.accuracy)
             }
         }
         .background(KeyCatcher { key in
@@ -103,8 +112,9 @@ private struct TypingSession: View {
     private var typing: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("\(Training.typing.title) · \(runner.lang.name)").font(.headline)
+                Text("\(Training.typing.title) · \(runner.mode.name)").font(.headline)
                 Spacer()
+                Text(tr("\(runner.cpm) зн/мин", "\(runner.cpm) cpm")).monospacedDigit().foregroundStyle(.secondary)
                 Text("\(runner.accuracy)%").monospacedDigit().foregroundStyle(.secondary)
                     .help(tr("Точность", "Accuracy"))
                 Label(clock(Double(runner.secondsLeft)), systemImage: "timer").monospacedDigit()
@@ -120,7 +130,7 @@ private struct TypingSession: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
             if runner.wrongLayout {
-                Text(runner.lang == .ru ? tr("Похоже, включена не та раскладка: переключи на русскую", "Looks like the wrong layout: switch to Russian")
+                Text(runner.mode.layout == .ru ? tr("Похоже, включена не та раскладка: переключи на русскую", "Looks like the wrong layout: switch to Russian")
                                         : tr("Похоже, включена не та раскладка: переключи на английскую", "Looks like the wrong layout: switch to English"))
                     .foregroundColor(.orange)
             } else {
@@ -151,7 +161,7 @@ private struct TypingSession: View {
     private var results: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(tr("Время вышло", "Time is up")).font(.largeTitle.bold())
-            Text("\(runner.lang.name) · \(secondsName(runner.duration))").foregroundStyle(.secondary)
+            Text("\(runner.mode.name) · \(secondsName(runner.duration))").foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 tile("\(runner.cpm)", tr("знаков в минуту", "characters per minute"))
                 tile("\(runner.cpm / 5)", tr("слов в минуту", "words per minute"))
@@ -175,13 +185,15 @@ private struct TypingSession: View {
     }
 }
 
-// скорость по попыткам, линия на каждое время захода
+// скорость или точность по попыткам, линия на каждое время захода
 struct TypingChart: View {
-    let lang: Lang
+    let mode: TypingMode
+    let accuracy: Bool
     @ObservedObject private var stats = Stats.shared
 
     var body: some View {
-        let series = TypingRunner.durations.map { (secondsName($0), stats.typing(lang, $0).history) }
+        let series = TypingRunner.durations.map { (secondsName($0), stats.typing(mode, $0).history) }
+        let unit = accuracy ? tr("точность, %", "accuracy, %") : tr("зн/мин", "cpm")
         if series.allSatisfy({ $0.1.isEmpty }) {
             Text(tr("График появится после первой попытки", "The chart appears after the first attempt"))
                 .font(.callout).foregroundStyle(.secondary)
@@ -189,15 +201,16 @@ struct TypingChart: View {
             Chart {
                 ForEach(series, id: \.0) { name, runs in
                     ForEach(runs.indices, id: \.self) { i in
-                        LineMark(x: .value(tr("Попытка", "Attempt"), i + 1), y: .value(tr("зн/мин", "cpm"), runs[i].cpm))
+                        let y = accuracy ? runs[i].accuracy : runs[i].cpm
+                        LineMark(x: .value(tr("Попытка", "Attempt"), i + 1), y: .value(unit, y))
                             .foregroundStyle(by: .value(tr("Время", "Time"), name))
-                        PointMark(x: .value(tr("Попытка", "Attempt"), i + 1), y: .value(tr("зн/мин", "cpm"), runs[i].cpm))
+                        PointMark(x: .value(tr("Попытка", "Attempt"), i + 1), y: .value(unit, y))
                             .foregroundStyle(by: .value(tr("Время", "Time"), name))
                     }
                 }
             }
             .chartXAxisLabel(tr("попытка", "attempt"))
-            .chartYAxisLabel(tr("зн/мин", "cpm"))
+            .chartYAxisLabel(unit)
             .frame(height: 180)
         }
     }

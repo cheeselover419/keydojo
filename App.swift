@@ -52,7 +52,7 @@ enum Screen: Equatable {
     case exercise(Int, Int)
     case exam
     case examRun(Int, ExamMode)
-    case typingRun(Lang, Double)
+    case typingRun(TypingMode, Double)
     case stats
 }
 
@@ -77,7 +77,7 @@ struct ContentView: View {
             case .lessons(.typing):
                 TypingSetupView(start: { screen = .typingRun($0, $1) }, back: { screen = .start })
             case .typingRun(let l, let duration):
-                TypingView(lang: l, duration: duration) { screen = .lessons(.typing) }
+                TypingView(mode: l, duration: duration) { screen = .lessons(.typing) }
             case .lessons(.vscode):
                 PlaceholderView(title: Training.vscode.title) { screen = .start }
             case .exercise(let i, let level):
@@ -536,6 +536,7 @@ struct StatsView: View {
     @State private var selected: Int?
     @State private var exams = false
     @State private var typing = false
+    @State private var typingAccuracy = false
 
     var body: some View {
         if typing { typingDetail }
@@ -659,8 +660,8 @@ struct StatsView: View {
             Text(Training.typing.title).font(.largeTitle.bold())
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Lang.allCases.indices, id: \.self) { n in
-                        let l = Lang.allCases[n]
+                    ForEach(TypingMode.allCases.indices, id: \.self) { n in
+                        let l = TypingMode.allCases[n]
                         Text(l.name).font(.title3.bold()).padding(.top, n == 0 ? 0 : 12)
                         ForEach(TypingRunner.durations, id: \.self) { d in
                             let t = stats.typing(l, d)
@@ -674,11 +675,20 @@ struct StatsView: View {
                                 }
                             }
                         }
-                        TypingChart(lang: l)
+                        TypingChart(mode: l, accuracy: typingAccuracy)
                     }
                 }
             }
-            Button(tr("Назад (Esc)", "Back (Esc)")) { typing = false }.keyboardShortcut(.cancelAction)
+            HStack(spacing: 16) {
+                Button(tr("Назад (Esc)", "Back (Esc)")) { typing = false }.keyboardShortcut(.cancelAction)
+                Button { typingAccuracy.toggle() } label: {
+                    HStack(spacing: 8) {
+                        Text(typingAccuracy ? tr("Показать скорость", "Show speed") : tr("Показать точность", "Show accuracy"))
+                        KeyCap(text: "A")
+                    }
+                }
+                .keyboardShortcut("a", modifiers: [])
+            }
         }
         .padding(28)
     }
