@@ -45,7 +45,11 @@ enum Training {
     }
 }
 
+// 1–9, десятая тренировка — 0
+func courseKey(_ i: Int) -> String { i < 9 ? "\(i + 1)" : "0" }
+
 enum Screen: Equatable {
+    case review
     case start
     case lessons(Training)
     case levels(Int)
@@ -67,7 +71,9 @@ struct ContentView: View {
             case .start:
                 StartView(choose: { screen = .lessons($0) }, stats: { screen = .stats }, settings: $settings)
             case .lessons(.terminal):
-                LessonListView(courses: terminalCourses, open: { screen = .levels($0) }, exam: { screen = .exam }, back: { screen = .start })
+                LessonListView(courses: terminalCourses, open: { screen = .levels($0) }, exam: { screen = .exam }, review: { screen = .review }, back: { screen = .start })
+            case .review:
+                ExerciseView(review: terminalCourses) { screen = .lessons(.terminal) }
             case .exam:
                 ExamSetupView(start: { screen = .examRun($0, $1) }, back: { screen = .lessons(.terminal) })
             case .examRun(let level, let mode):
@@ -168,31 +174,37 @@ struct LessonListView: View {
     let courses: [Course]
     let open: (Int) -> Void
     let exam: () -> Void
+    let review: () -> Void
     let back: () -> Void
+    @ObservedObject private var stats = Stats.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(Training.terminal.title).font(.largeTitle.bold())
             Text(tr("Выбери тренировку цифрой", "Choose a training by number")).foregroundStyle(.secondary)
-            ForEach(courses.indices, id: \.self) { i in
-                let c = courses[i]
-                Button { open(i) } label: {
-                    HStack(spacing: 14) {
-                        KeyCap(text: "\(i + 1)")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(c.title).font(.headline)
-                            Text(c.subtitle).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(courses.indices, id: \.self) { i in
+                        let c = courses[i]
+                        Button { open(i) } label: {
+                            HStack(spacing: 14) {
+                                KeyCap(text: courseKey(i))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.title).font(.headline)
+                                    Text(c.subtitle).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                LevelMarks(course: c)
+                                Text(tr("\(c.levels.map(\.exercises.count).reduce(0, +)) упр.", "\(c.levels.map(\.exercises.count).reduce(0, +)) ex."))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 64, alignment: .trailing)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        Spacer()
-                        LevelMarks(course: c)
-                        Text(tr("\(c.levels.map(\.exercises.count).reduce(0, +)) упр.", "\(c.levels.map(\.exercises.count).reduce(0, +)) ex."))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 64, alignment: .trailing)
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(KeyEquivalent(Character(courseKey(i))), modifiers: [])
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: [])
             }
             Button(action: exam) {
                 HStack(spacing: 14) {
@@ -207,8 +219,24 @@ struct LessonListView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("e", modifiers: [])
-            .padding(.top, 8)
-            Spacer()
+            .padding(.top, 4)
+            Button(action: review) {
+                HStack(spacing: 14) {
+                    KeyCap(text: "R")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Работа над ошибками", "Mistakes review")).font(.headline)
+                        Text(stats.reviewCount == 0
+                             ? tr("Пока пусто: сюда попадают задания с подсказкой, пропуском или ошибкой на экзамене", "Empty for now: tasks with a hint, a skip or an exam mistake land here")
+                             : tr("Заданий: \(stats.reviewCount). Решишь без подсказки — задание уйдёт из списка", "Tasks: \(stats.reviewCount). Solve one without a hint and it leaves the list"))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("r", modifiers: [])
+            .disabled(stats.reviewCount == 0)
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
         }
         .padding(28)
@@ -386,8 +414,18 @@ struct PlaceholderView: View {
     }
 }
 
+// задание в работе над ошибками: откуда оно
+struct ReviewRef {
+    let lesson: String
+    let index: Int
+    let topic: String
+}
+
 final class LessonRunner: ObservableObject {
     let lesson: Lesson
+    let refs: [ReviewRef]
+    let review: Bool
+    private(set) var fixed = 0           // в работе над ошибками: решено без подсказки
     @Published var index = 0
     @Published var term = Terminal()
     @Published var solved = false
@@ -400,11 +438,32 @@ final class LessonRunner: ObservableObject {
 
     init(_ lesson: Lesson) {
         self.lesson = lesson
+        refs = lesson.exercises.indices.map { ReviewRef(lesson: lesson.id, index: $0, topic: lesson.title) }
+        review = false
         reset()
         Stats.shared.started(lesson.id)
     }
 
+    // все задания с ошибками, по порядку тренировок и уровней
+    init(review courses: [Course]) {
+        var ex: [Exercise] = []
+        var refs: [ReviewRef] = []
+        for c in courses {
+            for l in c.levels {
+                for (i, e) in l.exercises.enumerated() where Stats.shared.needsReview(l.id, i) {
+                    ex.append(e)
+                    refs.append(ReviewRef(lesson: l.id, index: i, topic: "\(c.title) · \(levelName(l.level))"))
+                }
+            }
+        }
+        lesson = Lesson(id: "review", title: tr("Работа над ошибками", "Mistakes review"), subtitle: "", exercises: ex)
+        self.refs = refs
+        review = true
+        if ex.isEmpty { finished = true } else { reset() }
+    }
+
     var exercise: Exercise { lesson.exercises[index] }
+    var ref: ReviewRef { refs[index] }
 
     func reset() {
         let t = Terminal()
@@ -424,7 +483,7 @@ final class LessonRunner: ObservableObject {
             let t = Date().timeIntervalSince(start)
             elapsed = t
             // с пропусками уровень не засчитывается
-            if skipped.isEmpty { Stats.shared.completed(lesson.id, time: t) }
+            if skipped.isEmpty && !review { Stats.shared.completed(lesson.id, time: t) }
         }
     }
 
@@ -439,12 +498,18 @@ final class LessonRunner: ObservableObject {
         switch key.name {
         case "cmd+r": reset(); return true
         case "cmd+enter":
-            if !solved { skipped.insert(index) }
+            if !solved {
+                skipped.insert(index)
+                Stats.shared.markReview(ref.lesson, ref.index)
+            }
             next()
             return true
         case "cmd+/":
             showHint.toggle()
-            if showHint, !solved, hinted.insert(index).inserted { Stats.shared.hint(lesson.id, index) }
+            if showHint, !solved, hinted.insert(index).inserted {
+                Stats.shared.hint(ref.lesson, ref.index)
+                Stats.shared.markReview(ref.lesson, ref.index)
+            }
             return true
         default: break
         }
@@ -459,7 +524,11 @@ final class LessonRunner: ObservableObject {
         term.handle(key)
         if exercise.check(term) {
             solved = true
-            Stats.shared.solved(lesson.id, index)
+            Stats.shared.solved(ref.lesson, ref.index)
+            if review && !hinted.contains(index) {
+                Stats.shared.clearReview(ref.lesson, ref.index)
+                fixed += 1
+            }
         }
         return true
     }
@@ -474,9 +543,24 @@ struct ExerciseView: View {
         self.back = back
     }
 
+    init(review courses: [Course], back: @escaping () -> Void) {
+        _runner = StateObject(wrappedValue: LessonRunner(review: courses))
+        self.back = back
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if runner.finished {
+            if runner.finished && runner.review {
+                Spacer()
+                VStack(spacing: 8) {
+                    Text(tr("Работа над ошибками завершена", "Mistakes review finished")).font(.title.bold())
+                    Text(tr("Исправлено: \(runner.fixed) из \(runner.lesson.exercises.count)", "Fixed: \(runner.fixed) of \(runner.lesson.exercises.count)")).font(.title3)
+                    Text(tr("Осталось в списке: \(Stats.shared.reviewCount)", "Left in the list: \(Stats.shared.reviewCount)")).font(.title3)
+                    Text(tr("Enter — к списку тренировок", "Enter — back to trainings")).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            } else if runner.finished {
                 Spacer()
                 VStack(spacing: 8) {
                     Text(runner.skipped.isEmpty ? tr("Тренировка «\(runner.lesson.title)» пройдена", "Training “\(runner.lesson.title)” completed")
@@ -490,7 +574,7 @@ struct ExerciseView: View {
                 Spacer()
             } else {
                 HStack {
-                    Text("\(runner.lesson.title) · \(levelName(runner.lesson.level))").font(.headline)
+                    Text(runner.review ? "\(runner.lesson.title) · \(runner.ref.topic)" : "\(runner.lesson.title) · \(levelName(runner.lesson.level))").font(.headline)
                     Spacer()
                     TimelineView(.periodic(from: runner.start, by: 1)) { ctx in
                         Label(clock(ctx.date.timeIntervalSince(runner.start)), systemImage: "stopwatch").monospacedDigit()
@@ -553,26 +637,30 @@ struct StatsView: View {
                 tile("\(stats.days)", tr("дней занятий", "days of practice"))
             }
             Text(tr("Цифра — подробнее о тренировке", "Number — training details")).foregroundStyle(.secondary).padding(.top, 8)
-            ForEach(courses.indices, id: \.self) { i in
-                let c = courses[i]
-                let all = c.levels.map { stats.lesson($0.id) }
-                let total = c.levels.map(\.exercises.count).reduce(0, +)
-                Button { selected = i } label: {
-                    HStack(spacing: 14) {
-                        KeyCap(text: "\(i + 1)")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(c.title).font(.headline)
-                            Text(tr("решено \(all.map(\.solvedCount).reduce(0, +)) из \(total) упр., подсказок \(all.map(\.hints).reduce(0, +))",
-                                    "solved \(all.map(\.solvedCount).reduce(0, +)) of \(total) ex., hints \(all.map(\.hints).reduce(0, +))"))
-                                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(courses.indices, id: \.self) { i in
+                        let c = courses[i]
+                        let all = c.levels.map { stats.lesson($0.id) }
+                        let total = c.levels.map(\.exercises.count).reduce(0, +)
+                        Button { selected = i } label: {
+                            HStack(spacing: 14) {
+                                KeyCap(text: courseKey(i))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.title).font(.headline)
+                                    Text(tr("решено \(all.map(\.solvedCount).reduce(0, +)) из \(total) упр., подсказок \(all.map(\.hints).reduce(0, +))",
+                                            "solved \(all.map(\.solvedCount).reduce(0, +)) of \(total) ex., hints \(all.map(\.hints).reduce(0, +))"))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                LevelMarks(course: c)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        Spacer()
-                        LevelMarks(course: c)
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(KeyEquivalent(Character(courseKey(i))), modifiers: [])
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: [])
             }
             Button { exams = true } label: {
                 HStack(spacing: 14) {
@@ -612,7 +700,6 @@ struct StatsView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("p", modifiers: [])
-            Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
         }
         .padding(28)
@@ -830,6 +917,9 @@ struct ExamView: View {
             if done {
                 Stats.shared.examFinished(level: runner.level, mode: runner.mode, correct: runner.correct,
                                           total: runner.questions.count, time: runner.spent)
+                for (i, a) in runner.answers.enumerated() where i <= runner.index && (!a.solved || a.mistakes > 0) {
+                    Stats.shared.markReview(a.question.lesson, a.question.index)
+                }
             }
         }
         .padding(20)

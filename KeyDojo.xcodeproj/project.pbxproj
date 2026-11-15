@@ -18,6 +18,9 @@
 		B10000000000000000000009 /* Sound.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* Sound.swift */; };
 		B10000000000000000000012 /* Typing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* Typing.swift */; };
 		B10000000000000000000013 /* TypingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* TypingView.swift */; };
+		B10000000000000000000014 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000014 /* Commands.swift */; };
+		B10000000000000000000015 /* Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000015 /* Git.swift */; };
+		B10000000000000000000016 /* LessonsMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000016 /* LessonsMore.swift */; };
 		B10000000000000000000010 /* Sounds in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* Sounds */; };
 		B10000000000000000000011 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* AppIcon.icns */; };
 /* End PBXBuildFile section */
@@ -34,6 +37,9 @@
 		B20000000000000000000009 /* Sound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sound.swift; sourceTree = "<group>"; };
 		B20000000000000000000012 /* Typing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typing.swift; sourceTree = "<group>"; };
 		B20000000000000000000013 /* TypingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingView.swift; sourceTree = "<group>"; };
+		B20000000000000000000014 /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
+		B20000000000000000000015 /* Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Git.swift; sourceTree = "<group>"; };
+		B20000000000000000000016 /* LessonsMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonsMore.swift; sourceTree = "<group>"; };
 		B20000000000000000000010 /* Sounds */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Sounds; sourceTree = "<group>"; };
 		B20000000000000000000011 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B20000000000000000000090 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -77,6 +83,9 @@
 				B20000000000000000000009 /* Sound.swift */,
 				B20000000000000000000012 /* Typing.swift */,
 				B20000000000000000000013 /* TypingView.swift */,
+				B20000000000000000000014 /* Commands.swift */,
+				B20000000000000000000015 /* Git.swift */,
+				B20000000000000000000016 /* LessonsMore.swift */,
 				B20000000000000000000010 /* Sounds */,
 				B20000000000000000000011 /* AppIcon.icns */,
 				B20000000000000000000090 /* Info.plist */,
@@ -156,6 +165,9 @@
 				B10000000000000000000009 /* Sound.swift in Sources */,
 				B10000000000000000000012 /* Typing.swift in Sources */,
 				B10000000000000000000013 /* TypingView.swift in Sources */,
+				B10000000000000000000014 /* Commands.swift in Sources */,
+				B10000000000000000000015 /* Git.swift in Sources */,
+				B10000000000000000000016 /* LessonsMore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

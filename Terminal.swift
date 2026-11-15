@@ -21,7 +21,7 @@ struct TermTab {
     var history: [String] = []
 }
 
-private struct Token {
+struct Token {
     var text: String
     var quoted = false
     var op = false
@@ -29,8 +29,9 @@ private struct Token {
 
 final class Terminal: ObservableObject {
     static let cmdKeys: Set<String> = ["cmd+t", "cmd+w", "cmd+shift+]", "cmd+shift+[", "cmd+k"]
-    static let commands = ["cat", "cd", "clear", "cp", "echo", "find", "grep", "head", "less", "ls",
-                           "mkdir", "mv", "nano", "pwd", "rm", "rmdir", "tail", "touch", "vi", "vim", "wc"]
+    static let commands = ["bg", "cat", "cd", "chmod", "clear", "cp", "echo", "fg", "find", "git", "grep", "gunzip", "gzip",
+                           "head", "jobs", "kill", "killall", "less", "ls", "mkdir", "mv", "nano", "pgrep", "pkill", "ps",
+                           "pwd", "python3", "rm", "rmdir", "sh", "sleep", "tail", "tar", "touch", "unzip", "vi", "vim", "wc", "zip"]
 
     let fs = FileSystem.standard()
     @Published var tabs = [TermTab()]
@@ -47,7 +48,7 @@ final class Terminal: ObservableObject {
     private var savedInput = ""
     private var searchFrom = 0
     private var typedChars = 0
-    private var failed = false
+    var failed = false
 
     // для проверки упражнений
     var lastCommand = ""
@@ -56,6 +57,13 @@ final class Terminal: ObservableObject {
     var lastNames: [String] = []   // все команды последней строки
     var commandLog: [(line: String, failed: Bool)] = []   // для экзамена
     var events: Set<String> = []
+
+    // процессы и задачи, git-репозитории по пути к папке
+    var processes: [Proc] = Proc.system
+    var foreground: Proc?
+    var nextPid = 5001
+    var repos: [String: GitRepo] = [:]
+    var scriptDepth = 0
 
     var cwd: String {
         get { tabs[current].cwd }
@@ -98,6 +106,10 @@ final class Terminal: ObservableObject {
                 lines.append("^C")
                 mode = .shell
                 events.insert("interrupt")
+                if let f = foreground { processes.removeAll { $0.pid == f.pid } }
+                foreground = nil
+            } else if key.name == "ctrl+z" {
+                suspend()
             }
         case .nano: nanoKey(key)
         case .vim: vimKey(key)
@@ -307,22 +319,22 @@ final class Terminal: ObservableObject {
         commandLog.append((line, !execute(line)))
     }
 
-    private func err(_ line: String) {
+    func err(_ line: String) {
         lines.append(line)
         failed = true
     }
 
-    private func out(_ text: String) {
+    func out(_ text: String) {
         lines.append(contentsOf: textLines(text))
     }
 
-    private func textLines(_ s: String) -> [String] {
+    func textLines(_ s: String) -> [String] {
         var l = s.components(separatedBy: "\n")
         if l.last == "" { l.removeLast() }
         return l
     }
 
-    private func joined(_ l: [String]) -> String {
+    func joined(_ l: [String]) -> String {
         l.isEmpty ? "" : l.joined(separator: "\n") + "\n"
     }
 
@@ -394,9 +406,8 @@ final class Terminal: ObservableObject {
                 add(FileSystem.home)
             } else if c == "|" {
                 if next == "|" { op("||"); i += 1 } else { op("|") }
-            } else if c == "&", next == "&" {
-                op("&&")
-                i += 1
+            } else if c == "&" {
+                if next == "&" { op("&&"); i += 1 } else { op("&") }
             } else if c == ";" {
                 op(";")
             } else if c == "<" {
@@ -426,12 +437,17 @@ final class Terminal: ObservableObject {
     // строка делится на части по ; && ||, каждая часть — конвейер
     // false, если строка завершилась ошибкой
     @discardableResult
-    private func execute(_ line: String) -> Bool {
+    func execute(_ line: String) -> Bool {
         guard let tokens = tokenize(line) else { err("zsh: unmatched quote"); return false }
-        var parts: [(cond: String, tokens: [Token])] = [(";", [])]
+        // & запускает часть в фоне и работает как ;
+        var parts: [(cond: String, tokens: [Token], bg: Bool)] = [(";", [], false)]
         for t in tokens {
-            if t.op && [";", "&&", "||"].contains(t.text) {
-                parts.append((t.text, []))
+            if t.op && t.text == "&" {
+                if parts[parts.count - 1].tokens.isEmpty { err("zsh: parse error near `&'"); return false }
+                parts[parts.count - 1].bg = true
+                parts.append((";", [], false))
+            } else if t.op && [";", "&&", "||"].contains(t.text) {
+                parts.append((t.text, [], false))
             } else {
                 parts[parts.count - 1].tokens.append(t)
             }
@@ -447,14 +463,14 @@ final class Terminal: ObservableObject {
         for p in parts where !p.tokens.isEmpty {
             if p.cond == "&&" && !ok { continue }
             if p.cond == "||" && ok { continue }
-            ok = pipeline(p.tokens)
+            ok = p.bg ? background(p.tokens) : pipeline(p.tokens)
             if mode != .shell { return ok }
         }
         return ok
     }
 
     // true, если последняя команда завершилась без ошибки
-    private func pipeline(_ tokens: [Token]) -> Bool {
+    func pipeline(_ tokens: [Token]) -> Bool {
         var segments: [[String]] = [[]]
         var redirect: (path: String, append: Bool)?
         var input: String?
@@ -505,7 +521,11 @@ final class Terminal: ObservableObject {
                 if !failed {
                     mode = .running
                     events.insert("tailf")
+                    foreground = spawn(args.joined(separator: " "))
                 }
+                return !failed
+            case "sleep", "python3", "python", "node", "fg":
+                out(longRunning(args))
                 return !failed
             default: break
             }
@@ -526,6 +546,8 @@ final class Terminal: ObservableObject {
             let abs = path(r.path)
             if fs.node(abs)?.isDir == true {
                 err("zsh: is a directory: \(r.path)")
+            } else if let n = fs.node(abs), n.mode & 0o200 == 0 {
+                err("zsh: permission denied: \(r.path)")
             } else if !fs.write(abs, result, append: r.append) {
                 err("zsh: no such file or directory: \(r.path)")
             }
@@ -536,7 +558,7 @@ final class Terminal: ObservableObject {
         return !failed
     }
 
-    private func split(_ args: [String]) -> (flags: Set<Character>, rest: [String]) {
+    func split(_ args: [String]) -> (flags: Set<Character>, rest: [String]) {
         var f = Set<Character>()
         var r: [String] = []
         for a in args {
@@ -565,27 +587,49 @@ final class Terminal: ObservableObject {
         case "grep": return grep(rest, stdin)
         case "clear": lines = []
         case "nano", "vim", "vi", "less", "more": err(tr("\(args[0]): в тренажёре запускай отдельно, без | и >", "\(args[0]): run it on its own here, without | and >"))
+        case "chmod": chmod(rest)
+        case "sh", "bash", "zsh": return script(rest.first, needExec: false)
+        case "ps": return ps(rest)
+        case "kill": return kill(rest)
+        case "killall", "pkill": killByName(args[0], rest)
+        case "pgrep": return pgrep(rest)
+        case "jobs": return jobsList()
+        case "bg": return bg(rest)
+        case "sleep", "python3", "python", "node", "fg":
+            err(tr("\(args[0]): в тренажёре запускай отдельно, без | и >", "\(args[0]): run it on its own here, without | and >"))
+        case "tar": return tar(rest)
+        case "zip": return zip(rest)
+        case "unzip": return unzip(rest)
+        case "gzip", "gunzip": gzip(rest, unpack: args[0] == "gunzip")
+        case "git": return git(rest)
+        case let c where c.contains("/"): return script(c, needExec: true)
         default: err("zsh: command not found: \(args[0])")
         }
         return ""
     }
 
-    private func readFile(_ p: String, _ cmd: String) -> String? {
+    func readFile(_ p: String, _ cmd: String) -> String? {
         guard let n = fs.node(path(p)) else { err("\(cmd): \(p): No such file or directory"); return nil }
         guard !n.isDir else { err("\(cmd): \(p): Is a directory"); return nil }
+        guard n.mode & 0o400 != 0 else { err("\(cmd): \(p): Permission denied"); return nil }
         return n.content
     }
 
     private func ls(_ args: [String], tty: Bool) -> String {
         let (f, paths) = split(args)
-        let all = f.contains("a"), long = f.contains("l")
+        let all = f.contains("a"), long = f.contains("l"), dirItself = f.contains("d")
         let targets = paths.isEmpty ? ["."] : paths
         var res: [String] = []
         var files: [String] = []
         var dirs: [(String, FSNode, [String: FSNode])] = []
         for p in targets {
             guard let n = fs.node(path(p)) else { err("ls: \(p): No such file or directory"); continue }
-            if let ch = n.children { dirs.append((p, n, ch)) } else { files.append(long ? longLine(p, n) : p) }
+            if let ch = n.children, !dirItself {
+                guard n.mode & 0o400 != 0 else { err("ls: \(p): Permission denied"); continue }
+                dirs.append((p, n, ch))
+            } else {
+                files.append(long ? longLine(p, n) : p)
+            }
         }
         if !files.isEmpty { res += tty && !long ? [files.joined(separator: "  ")] : files }
         for (p, n, ch) in dirs {
@@ -610,7 +654,7 @@ final class Terminal: ObservableObject {
     private func longLine(_ name: String, _ n: FSNode) -> String {
         let size = String(n.children.map { 64 + 32 * $0.count } ?? n.content.utf8.count)
         let pad = String(repeating: " ", count: max(0, 6 - size.count))
-        return "\(n.isDir ? "drwxr-xr-x" : "-rw-r--r--")  1 student  staff \(pad)\(size) Nov 15 10:00 \(name)"
+        return "\(n.isDir ? "d" : "-")\(n.permissions)  1 student  staff \(pad)\(size) Nov 15 10:00 \(name)"
     }
 
     private func cd(_ args: [String]) -> String {
@@ -626,6 +670,7 @@ final class Terminal: ObservableObject {
         let abs = path(target)
         guard let n = fs.node(abs) else { err("cd: no such file or directory: \(target)"); return "" }
         guard n.isDir else { err("cd: not a directory: \(target)"); return "" }
+        guard n.mode & 0o100 != 0 else { err("cd: permission denied: \(target)"); return "" }
         tabs[current].oldpwd = cwd
         cwd = abs
         return show ? FileSystem.pretty(abs) + "\n" : ""
@@ -783,7 +828,7 @@ final class Terminal: ObservableObject {
             guard let t = readFile(p, "wc") else { continue }
             let c = counts(t)
             rows.append(row(c, " " + p))
-            total = total.map { zip($0, c).map(+) } ?? c
+            total = total.map { Swift.zip($0, c).map(+) } ?? c
         }
         if files.count > 1, let total { rows.append(row(total, " total")) }
         return joined(rows)
@@ -799,7 +844,7 @@ final class Terminal: ObservableObject {
         return a.joined(separator: " ") + (newline ? "\n" : "")
     }
 
-    private func walk(_ n: FSNode, _ p: String, _ visit: (FSNode, String) -> Void) {
+    func walk(_ n: FSNode, _ p: String, _ visit: (FSNode, String) -> Void) {
         visit(n, p)
         guard let ch = n.children else { return }
         for k in ch.keys.sorted() { walk(ch[k]!, p.hasSuffix("/") ? p + k : p + "/" + k, visit) }

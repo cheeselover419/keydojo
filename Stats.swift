@@ -63,6 +63,7 @@ final class Stats: ObservableObject {
         var time: Double = 0           // секунд в упражнениях
         var exams: [String: ExamStats] = [:]   // ключ — уровень и вариант, «0.full»
         var typing: [String: TypingStats] = [:]   // ключ — режим и время, «ru.30», «code.60»
+        var review: Set<String> = []   // задания для работы над ошибками, «git.medium#2»
 
         init() {}
 
@@ -74,6 +75,7 @@ final class Stats: ObservableObject {
             time = try c.decodeIfPresent(Double.self, forKey: .time) ?? 0
             exams = try c.decodeIfPresent([String: ExamStats].self, forKey: .exams) ?? [:]
             typing = try c.decodeIfPresent([String: TypingStats].self, forKey: .typing) ?? [:]
+            review = try c.decodeIfPresent(Set<String>.self, forKey: .review) ?? []
         }
     }
 
@@ -128,6 +130,20 @@ final class Stats: ObservableObject {
     private func typingKey(_ mode: TypingMode, _ duration: Double) -> String { "\(mode.rawValue).\(Int(duration))" }
 
     private func examKey(_ level: Int, _ mode: ExamMode) -> String { "\(level).\(mode == .limited ? "limited" : "full")" }
+
+    // ошибка: подсказка, пропуск или ошибка на экзамене
+    func needsReview(_ id: String, _ i: Int) -> Bool { data.review.contains("\(id)#\(i)") }
+    var reviewCount: Int { data.review.count }
+
+    func markReview(_ id: String, _ i: Int) {
+        guard data.review.insert("\(id)#\(i)").inserted else { return }
+        save()
+    }
+
+    func clearReview(_ id: String, _ i: Int) {
+        guard data.review.remove("\(id)#\(i)") != nil else { return }
+        save()
+    }
 
     func started(_ id: String) {
         update(id) { $0.started += 1 }

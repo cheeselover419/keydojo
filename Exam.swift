@@ -13,6 +13,8 @@ enum ExamMode {
 struct ExamQuestion {
     let topic: String
     let exercise: Exercise
+    var lesson = ""     // id уровня и номер задания, для работы над ошибками
+    var index = 0
 }
 
 struct ExamAnswer {
@@ -51,7 +53,9 @@ final class ExamRunner: ObservableObject {
     init(courses: [Course], level: Int, mode: ExamMode) {
         self.level = level
         self.mode = mode
-        let pool = courses.flatMap { c in c.levels[level].exercises.map { ExamQuestion(topic: c.title, exercise: $0) } }
+        let pool = courses.flatMap { c in
+            c.levels[level].exercises.enumerated().map { ExamQuestion(topic: c.title, exercise: $1, lesson: c.levels[level].id, index: $0) }
+        }
         questions = Array(pool.shuffled().prefix(Self.size))
         answers = questions.map { ExamAnswer(question: $0) }
         reset()

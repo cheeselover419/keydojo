@@ -3,23 +3,55 @@ import Foundation
 final class FSNode {
     var children: [String: FSNode]?
     var content: String
+    var mode: Int                       // права, 0o755
+    var archive: Archive?               // если файл — архив
 
-    init(dir: [String: FSNode] = [:]) {
+    init(dir: [String: FSNode] = [:], mode: Int = 0o755) {
         children = dir
         content = ""
+        self.mode = mode
     }
 
-    init(file: String) {
+    init(file: String, mode: Int = 0o644) {
         children = nil
         content = file
+        self.mode = mode
     }
 
     var isDir: Bool { children != nil }
 
     func clone() -> FSNode {
-        if let children { return FSNode(dir: children.mapValues { $0.clone() }) }
-        return FSNode(file: content)
+        let n = children.map { FSNode(dir: $0.mapValues { $0.clone() }, mode: mode) } ?? FSNode(file: content, mode: mode)
+        n.archive = archive?.clone()
+        return n
     }
+
+    // rwxr-xr-x
+    var permissions: String {
+        (0..<9).map { i in mode & (0o400 >> i) != 0 ? Array("rwx")[i % 3] : "-" }.map(String.init).joined()
+    }
+}
+
+// содержимое архива: пути внутри него и копии файлов и папок
+struct Archive {
+    var kind: String                    // tar, tar.gz, zip, gz
+    var entries: [(path: String, node: FSNode)]
+
+    func clone() -> Archive { Archive(kind: kind, entries: entries.map { ($0.path, $0.node.clone()) }) }
+
+    // все пути, папки со слешем в конце, как в tar -t
+    var listing: [String] {
+        var res: [String] = []
+        func add(_ p: String, _ n: FSNode) {
+            guard let ch = n.children else { res.append(p); return }
+            res.append(p + "/")
+            for k in ch.keys.sorted() { add(p + "/" + k, ch[k]!) }
+        }
+        for e in entries { add(e.path, e.node) }
+        return res
+    }
+
+    var files: [String] { listing.filter { !$0.hasSuffix("/") } }
 }
 
 // ненастоящая файловая система, на диск ничего не пишется

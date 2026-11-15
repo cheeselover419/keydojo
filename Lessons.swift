@@ -54,12 +54,13 @@ extension Terminal {
 private let log = "projects/app/app.log"
 
 // пересобираются при каждом обращении, чтобы тексты были на текущем языке
-var terminalLessons: [Lesson] { [navigation, files, viewing, editing, searching, hotkeys] }
+var terminalLessons: [Lesson] { [navigation, files, viewing, editing, searching, hotkeys, gitLesson, permissionsLesson, processesLesson, archivesLesson] }
 
 var terminalCourses: [Course] {
     let more: [[[Exercise]]] = [
         [navigationMedium, navigationHard], [filesMedium, filesHard], [viewingMedium, viewingHard],
         [editingMedium, editingHard], [searchingMedium, searchingHard], [hotkeysMedium, hotkeysHard],
+        [gitMedium, gitHard], [permissionsMedium, permissionsHard], [processesMedium, processesHard], [archivesMedium, archivesHard],
     ]
     return zip(terminalLessons, more).map { easy, rest in
         Course(title: easy.title, subtitle: easy.subtitle, levels: [easy] + rest.enumerated().map { n, ex in

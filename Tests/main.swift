@@ -27,6 +27,14 @@ let solutions: [[[Key]]] = [
   [typed("cd Doc") + [k("tab"), E], [k("up"), k("up"), E], [k("ctrl+r")] + typed("grep") + [E],
    [k("ctrl+a")] + typed("l") + [E], [k("ctrl+e")] + typed(".txt") + [E], [k("opt+left"), k("opt+left")],
    [k("ctrl+w")], [k("ctrl+u")], [k("ctrl+c")], [k("ctrl+l")], [k("cmd+t")], [k("cmd+shift+]")], [k("cmd+shift+[")], [k("cmd+w")]],
+  [cmd("git init"), cmd("git status"), cmd("git add README.md"), cmd("git commit -m \"fix readme\""), cmd("git add ."), cmd("git log"),
+   cmd("git log --oneline"), cmd("git branch feature"), cmd("git switch feature")],
+  [cmd("ls -l scripts"), cmd("chmod +x scripts/deploy.sh"), cmd("./scripts/backup.sh"), cmd("chmod +x scripts/hello.sh") + cmd("./scripts/hello.sh"),
+   cmd("chmod 600 scripts/secret.txt"), cmd("chmod 755 scripts/deploy.sh"), cmd("chmod a-w notes.txt"), cmd("chmod u+r scripts/secret.txt") + cmd("cat scripts/secret.txt")],
+  [cmd("ps"), cmd("ps aux"), cmd("ps aux | grep python3"), cmd("kill 4242"), cmd("sleep 100 &"), cmd("jobs"),
+   cmd("sleep 100") + [k("ctrl+c")], cmd("sleep 100") + [k("ctrl+z")]],
+  [cmd("tar -czf site.tar.gz projects/site"), cmd("tar -tzf backup.tar.gz"), cmd("tar -xzf backup.tar.gz"), cmd("zip -r docs.zip Documents"),
+   cmd("unzip photos.zip"), cmd("unzip -l photos.zip"), cmd("gzip projects/app/app.log"), cmd("gunzip old.log.gz")],
 ]
 
 var fails = 0
@@ -161,6 +169,33 @@ let levelSolutions: [[[[Key]]]] = [
      cmd("tail -f \(L)") + [k("ctrl+c"), k("ctrl+l"), k("up"), E],
      [k("opt+left"), k("ctrl+w")] + typed("FIXME ") + [E]],
   ],
+  [ // git
+    [cmd("git switch -c fix"), cmd("git diff"), cmd("git restore --staged main.py"), cmd("git restore README.md"),
+     cmd("git commit -am \"update docs\""), cmd("git log --oneline -2"), cmd("git branch -d old")],
+    [cmd("cd projects/site") + cmd("git init") + cmd("git add .") + cmd("git commit -m \"init\""),
+     cmd("git switch -c feature") + cmd("touch feature.txt") + cmd("git add feature.txt") + cmd("git commit -m \"add feature\""),
+     cmd("git merge feature"), cmd("git stash") + cmd("git switch main") + cmd("git switch feature") + cmd("git stash pop"),
+     cmd("git log --oneline | wc -l")],
+  ],
+  [ // права
+    [cmd("chmod +x scripts/*.sh"), cmd("chmod 644 Documents/report.txt"), cmd("chmod 700 private"), cmd("chmod -R g-w scripts"),
+     cmd("ls -ld scripts"), cmd("sh scripts/hello.sh")],
+    [cmd("echo \"echo hi\" > hi.sh") + cmd("chmod +x hi.sh") + cmd("./hi.sh"), cmd("chmod 400 scripts/secret.txt"),
+     cmd("mkdir bin") + cmd("cp scripts/backup.sh bin/backup") + cmd("chmod +x bin/backup") + cmd("bin/backup"),
+     cmd("chmod +x scripts/deploy.sh && ./scripts/deploy.sh"), cmd("ls -l scripts | grep rwx")],
+  ],
+  [ // процессы
+    [cmd("fg") + [k("ctrl+c")], cmd("bg"), cmd("kill %1"), cmd("kill -9 4242"), cmd("killall sleep"), cmd("pgrep Safari")],
+    [cmd("python3 -m http.server &") + cmd("jobs") + cmd("kill %1"), cmd("sleep 100 & sleep 200 & jobs"), cmd("pgrep python3 | wc -l"),
+     cmd("sleep 300") + [k("ctrl+z")] + cmd("bg") + cmd("jobs"), cmd("kill %1 %2")],
+  ],
+  [ // архивы
+    [cmd("mkdir restore") + cmd("tar -xzf backup.tar.gz -C restore"), cmd("unzip photos.zip -d pics"), cmd("tar -czf texts.tar.gz notes.txt draft.txt"),
+     cmd("tar -cf app.tar projects/app"), cmd("tar -czvf site.tar.gz projects/site"), cmd("gzip logs/*.log")],
+    [cmd("tar -czf backup.tar.gz projects") + cmd("rm -r projects/site") + cmd("tar -xzf backup.tar.gz"),
+     cmd("unzip photos.zip") + cmd("tar -czf photos.tar.gz photos"), cmd("tar -tzf backup.tar.gz | grep main.py"),
+     cmd("tar -tzf backup.tar.gz | wc -l"), cmd("zip txt.zip *.txt && rm *.txt")],
+  ],
 ]
 for (ci, course) in terminalCourses.enumerated() {
   for n in 1...2 {
@@ -278,6 +313,14 @@ do {
   r.tick(now: t0.addingTimeInterval(31))
   check(r.finished && r.remaining == 0 && r.secondsLeft == 0 && !r.handle(k("a", "ф")), "через 30 секунд заход закончен", "печать")
   check(r.cpm == (word.count - 1) * 2, "скорость в знаках в минуту в конце", "печать")
+}
+
+// экзамен помнит, из какого уровня и какого задания вопрос: для работы над ошибками
+do {
+  let courses = terminalCourses
+  let r = ExamRunner(courses: courses, level: 2, mode: .full)
+  let ids = Dictionary(uniqueKeysWithValues: courses.map { ($0.levels[2].id, $0.levels[2]) })
+  check(r.questions.allSatisfy { q in ids[q.lesson]?.exercises[q.index].task == q.exercise.task }, "вопрос знает свой уровень и номер")
 }
 
 print("провалено:", fails)
