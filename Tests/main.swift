@@ -111,5 +111,71 @@ do {
   print(ok ? "ok  " : "FAIL", "vim gg")
 }
 
+// решения среднего и сложного уровней: [тренировка][уровень][упражнение]
+let L = "projects/app/app.log"
+let bs = k("backspace")
+let levelSolutions: [[[[Key]]]] = [
+  [ // навигация
+    [cmd("cd projects/app/src"), cmd("cd ../../site"), cmd("ls -l projects/app"), cmd("ls -a ~"),
+     cmd("cd /Applications/Terminal.app") + cmd("cd -"), cmd("pwd") + cmd("cd")],
+    [cmd("cd projects && ls && cd .."), cmd("ls Desktop Documents Downloads"), cmd("cd $HOME"), cmd("ls ~/*.txt"),
+     cmd("cd ~/Documents") + cmd("cd ../projects/app/tests")],
+  ],
+  [ // файлы
+    [cmd("touch a.txt b.txt c.txt"), cmd("mkdir backup") + cmd("cp notes.txt draft.txt backup/"), cmd("mv trash/*.tmp Desktop/"),
+     cmd("cp .zshrc Documents/zshrc-backup"), cmd("mv projects/site projects/website"), cmd("rm Downloads/*")],
+    [cmd("mkdir release && cp -r projects/app release/ && cd release/app"), cmd("mkdir backup") + cmd("cp -r projects backup/projects-2026"),
+     cmd("mkdir Documents/texts") + cmd("mv notes.txt draft.txt Documents/texts/") + cmd("rm old.log"),
+     cmd("touch ~/todo.md"), cmd("rm trash/*") + cmd("rmdir trash")],
+  ],
+  [ // просмотр
+    [cmd("cat notes.txt draft.txt"), cmd("wc -w notes.txt"), cmd("tail -n 1 \(L)"), cmd("head -n 8 \(L) | tail -n 4"),
+     cmd("less \(L)") + [k("g","G"), k("q","q")], cmd("less \(L)") + typed("/ERROR") + [E, k("n","n"), k("q","q")]],
+    [cmd("ls | wc -l"), cmd("head -n 3 \(L) > top.txt"), cmd("head -n 10 \(L) | tail -n 1"), cmd("wc -l notes.txt draft.txt"),
+     cmd("tail -f \(L)") + [k("ctrl+c"), k("ctrl+l")]],
+  ],
+  [ // редактирование
+    [cmd("echo one > list.txt") + cmd("echo two >> list.txt") + cmd("echo three >> list.txt"), cmd("> hello.txt"),
+     cmd("nano notes.txt") + Array(repeating: k("down"), count: 4) + typed("- finish KeyDojo") + [k("ctrl+o"), E, k("ctrl+x")],
+     cmd("nano steps.txt") + [k("ctrl+k"), k("ctrl+k"), k("down"), k("ctrl+u"), k("ctrl+o"), E, k("ctrl+x")],
+     cmd("vim list.txt") + typed("jdd:wq") + [E], cmd("vim list.txt") + typed("opears") + [ESC] + typed(":wq") + [E]],
+    [cmd("nano config.txt") + [k("ctrl+w")] + typed("debug") + [E, k("ctrl+e")] + Array(repeating: bs, count: 4) + typed("false")
+       + [k("ctrl+w")] + typed("port") + [E, k("ctrl+e")] + Array(repeating: bs, count: 4) + typed("3000") + [k("ctrl+o"), E, k("ctrl+x")],
+     cmd("vim config.txt") + typed("Gotimeout=30") + [ESC] + typed(":wq") + [E],
+     cmd("vim config.txt") + typed("Gggdd:wq") + [E],
+     cmd("cat a.txt b.txt > ab.txt"),
+     cmd("nano notes.txt") + [k("ctrl+o")] + Array(repeating: bs, count: 9) + typed("notes2.txt") + [E, k("ctrl+x")]],
+  ],
+  [ // поиск
+    [cmd("find projects -type d"), cmd("find . -name \"*.txt\""), cmd("grep -v INFO \(L)"), cmd("grep -rl greet projects"),
+     cmd("grep -c GET \(L)"), cmd("find . -name \"*test*\"")],
+    [cmd("grep ERROR \(L) > errors.txt"), cmd("grep -E \"ERROR|WARN\" \(L)"), cmd("find projects -name \"*.py\" | wc -l"),
+     cmd("grep -rn TODO projects | grep -v css"), cmd("grep -ril hello .")],
+  ],
+  [ // горячие клавиши
+    [typed("cd pr") + [k("tab")] + typed("ap") + [k("tab")] + typed("sr") + [k("tab"), E],
+     [k("opt+left"), k("ctrl+w")], [k("ctrl+k")], [k("ctrl+r")] + typed("mkdir") + [ESC] + typed("2") + [E],
+     [k("cmd+t")] + cmd("cd projects") + [k("cmd+shift+[")], [k("up")] + typed(" | wc -l") + [E]],
+    [[k("opt+left"), k("ctrl+w"), k("ctrl+w")], [k("up"), k("up"), k("up"), E, k("up"), k("up"), k("up"), E],
+     [k("cmd+shift+]"), k("cmd+w"), k("cmd+shift+["), k("cmd+w"), k("cmd+shift+["), k("cmd+w")],
+     cmd("tail -f \(L)") + [k("ctrl+c"), k("ctrl+l"), k("up"), E],
+     [k("opt+left"), k("ctrl+w")] + typed("FIXME ") + [E]],
+  ],
+]
+for (ci, course) in terminalCourses.enumerated() {
+  for n in 1...2 {
+    for (ei, ex) in course.levels[n].exercises.enumerated() {
+      let t = Terminal(); ex.setup(t); t.resetChecks()
+      let before = ex.check(t)
+      var solved = false
+      for key in levelSolutions[ci][n - 1][ei] { t.handle(key); if ex.check(t) { solved = true } }
+      let ok = !before && solved
+      if !ok { fails += 1 }
+      print(ok ? "ok  " : "FAIL", "\(ci + 1).\(levelName(n)).\(ei + 1)", ex.task.prefix(50), before ? "(решено до ввода!)" : "")
+      if !ok { print(t.lines.suffix(6).joined(separator: "\n")) }
+    }
+  }
+}
+
 print("провалено:", fails)
 if fails > 0 { exit(1) }

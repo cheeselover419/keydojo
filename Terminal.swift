@@ -110,8 +110,9 @@ final class Terminal: ObservableObject {
             current = tabs.count - 1
         case "cmd+w":
             guard tabs.count > 1 else { return }
+            // как в macOS: после закрытия выбирается соседняя вкладка справа
             let i = current
-            current = max(0, i - 1)
+            current = min(i, tabs.count - 2)
             tabs.remove(at: i)
         case "cmd+shift+]": current = (current + 1) % tabs.count
         case "cmd+shift+[": current = (current + tabs.count - 1) % tabs.count
@@ -476,7 +477,13 @@ final class Terminal: ObservableObject {
             }
             i += 1
         }
+        // "> файл" без команды делает файл пустым
+        if segments == [[]], let r = redirect {
+            if !fs.write(path(r.path), "", append: r.append) { err("zsh: no such file or directory: \(r.path)") }
+            return !failed
+        }
         if segments.contains(where: { $0.isEmpty }) { err("zsh: parse error near `|'"); return false }
+        for s in segments { events.insert("cmd:" + s[0]) }
         lastNames += segments.map { $0[0] }
 
         failed = false
@@ -749,27 +756,32 @@ final class Terminal: ObservableObject {
 
     private func wc(_ args: [String], _ stdin: String?) -> String {
         let (f, files) = split(args)
-        let text: String, label: String
-        if let p = files.first {
-            guard let t = readFile(p, "wc") else { return "" }
-            text = t
-            label = " " + p
-        } else {
-            text = stdin ?? ""
-            label = ""
+        func counts(_ text: String) -> [Int] {
+            let l = text.filter { $0 == "\n" }.count
+            let w = text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
+            var cols: [Int] = []
+            if f.isEmpty || f.contains("l") { cols.append(l) }
+            if f.isEmpty || f.contains("w") { cols.append(w) }
+            if f.isEmpty || f.contains("c") { cols.append(text.utf8.count) }
+            return cols
         }
-        let l = text.filter { $0 == "\n" }.count
-        let w = text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).count
-        let c = text.utf8.count
-        var cols: [Int] = []
-        if f.isEmpty || f.contains("l") { cols.append(l) }
-        if f.isEmpty || f.contains("w") { cols.append(w) }
-        if f.isEmpty || f.contains("c") { cols.append(c) }
-        let s = cols.map { v -> String in
-            let t = String(v)
-            return String(repeating: " ", count: max(0, 8 - t.count)) + t
+        func row(_ cols: [Int], _ label: String) -> String {
+            cols.map { v -> String in
+                let t = String(v)
+                return String(repeating: " ", count: max(0, 8 - t.count)) + t
+            }.joined() + label
         }
-        return s.joined() + label + "\n"
+        if files.isEmpty { return row(counts(stdin ?? ""), "") + "\n" }
+        var rows: [String] = []
+        var total: [Int]?
+        for p in files {
+            guard let t = readFile(p, "wc") else { continue }
+            let c = counts(t)
+            rows.append(row(c, " " + p))
+            total = total.map { zip($0, c).map(+) } ?? c
+        }
+        if files.count > 1, let total { rows.append(row(total, " total")) }
+        return joined(rows)
     }
 
     private func echo(_ args: [String]) -> String {
@@ -821,35 +833,56 @@ final class Terminal: ObservableObject {
 
     private func grep(_ args: [String], _ stdin: String?) -> String {
         let (f, ops) = split(args)
-        guard let pattern = ops.first else { err("usage: grep [-inrv] pattern [file ...]"); return "" }
+        guard let pattern = ops.first else { err("usage: grep [-cilnrvE] pattern [file ...]"); return "" }
         let rec = f.contains("r") || f.contains("R"), num = f.contains("n")
-        let ic = f.contains("i"), inv = f.contains("v")
+        let ic = f.contains("i"), inv = f.contains("v"), count = f.contains("c"), names = f.contains("l")
+        var regex: NSRegularExpression?
+        if f.contains("E") {
+            guard let r = try? NSRegularExpression(pattern: pattern, options: ic ? [.caseInsensitive] : []) else {
+                err("grep: invalid regular expression")
+                return ""
+            }
+            regex = r
+        }
+        func hit(_ line: String) -> Bool {
+            if let regex { return regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil }
+            return ic ? line.lowercased().contains(pattern.lowercased()) : line.contains(pattern)
+        }
         var res: [String] = []
+        var found = false
         func scan(_ text: String, _ label: String?) {
-            for (k, line) in textLines(text).enumerated() {
-                let hit = ic ? line.lowercased().contains(pattern.lowercased()) : line.contains(pattern)
-                guard hit != inv else { continue }
-                res.append((label.map { $0 + ":" } ?? "") + (num ? "\(k + 1):" : "") + line)
+            let prefix = label.map { $0 + ":" } ?? ""
+            var matched: [String] = []
+            for (k, line) in textLines(text).enumerated() where hit(line) != inv {
+                matched.append(prefix + (num ? "\(k + 1):" : "") + line)
+            }
+            if !matched.isEmpty { found = true }
+            if names {
+                if !matched.isEmpty { res.append(label ?? "(standard input)") }
+            } else if count {
+                res.append(prefix + String(matched.count))
+            } else {
+                res += matched
             }
         }
         var files = Array(ops.dropFirst())
         if files.isEmpty && !rec {
             scan(stdin ?? "", nil)
-            if res.isEmpty { failed = true }
-            return joined(res)
-        }
-        if files.isEmpty { files = ["."] }
-        let multi = rec || files.count > 1
-        for p in files {
-            guard let n = fs.node(path(p)) else { err("grep: \(p): No such file or directory"); continue }
-            if n.isDir {
-                guard rec else { err("grep: \(p): Is a directory"); continue }
-                walk(n, p) { node, fp in if !node.isDir { scan(node.content, fp) } }
-            } else {
-                scan(n.content, multi ? p : nil)
+        } else {
+            if files.isEmpty { files = ["."] }
+            let multi = rec || files.count > 1
+            for p in files {
+                guard let n = fs.node(path(p)) else { err("grep: \(p): No such file or directory"); continue }
+                if n.isDir {
+                    guard rec else { err("grep: \(p): Is a directory"); continue }
+                    walk(n, p) { node, fp in if !node.isDir { scan(node.content, fp) } }
+                } else {
+                    // для -l имя файла нужно и без -r
+                    scan(n.content, multi || names ? p : nil)
+                }
             }
         }
-        if res.isEmpty { failed = true }
+        if !found { failed = true }
         return joined(res)
     }
 
@@ -1092,11 +1125,15 @@ final class Terminal: ObservableObject {
             case "k", "up": v.buf.move("up")
             case "0": v.buf.col = 0
             case "$": v.buf.col = len
-            case "G": v.buf.row = v.buf.lines.count - 1; v.buf.col = 0
+            case "G":
+                v.buf.row = v.buf.lines.count - 1
+                v.buf.col = 0
+                events.insert("vim:G")
             case "g":
                 if g {
                     v.buf.row = 0
                     v.buf.col = 0
+                    events.insert("vim:gg")
                 } else {
                     v.pendingG = true
                 }
@@ -1181,12 +1218,18 @@ final class Terminal: ObservableObject {
         case "j", "down", "enter", "e": l.top = min(max(l.maxTop, l.top), l.top + 1)
         case "k", "up", "y": l.top = max(0, l.top - 1)
         case "g", "<": l.top = 0
-        case "G", ">": l.top = l.maxTop
+        case "G", ">":
+            l.top = l.maxTop
+            events.insert("less:end")
         case "/": l.prompt = ""
         case "n" where l.query.isEmpty, "N" where l.query.isEmpty:
             l.message = "No previous regular expression"
         case "n":
-            if !l.find(from: l.top + 1, forward: true) { l.message = "Pattern not found  (press RETURN)" }
+            if l.find(from: l.top + 1, forward: true) {
+                events.insert("less:next")
+            } else {
+                l.message = "Pattern not found  (press RETURN)"
+            }
         case "N":
             if !l.find(from: l.top - 1, forward: false) { l.message = "Pattern not found  (press RETURN)" }
         default: break

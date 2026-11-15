@@ -18,7 +18,8 @@ enum Training {
 enum Screen: Equatable {
     case start
     case lessons(Training)
-    case exercise(Int)
+    case levels(Int)
+    case exercise(Int, Int)
     case stats
 }
 
@@ -32,13 +33,15 @@ struct ContentView: View {
             case .start:
                 StartView(choose: { screen = .lessons($0) }, stats: { screen = .stats })
             case .lessons(.terminal):
-                LessonListView(lessons: terminalLessons, open: { screen = .exercise($0) }, back: { screen = .start })
+                LessonListView(courses: terminalCourses, open: { screen = .levels($0) }, back: { screen = .start })
+            case .levels(let i):
+                LevelListView(course: terminalCourses[i], open: { screen = .exercise(i, $0) }, back: { screen = .lessons(.terminal) })
             case .lessons(.vscode):
                 PlaceholderView(title: Training.vscode.title) { screen = .start }
-            case .exercise(let i):
-                ExerciseView(lesson: terminalLessons[i]) { screen = .lessons(.terminal) }
+            case .exercise(let i, let level):
+                ExerciseView(lesson: terminalCourses[i].levels[level]) { screen = .levels(i) }
             case .stats:
-                StatsView(lessons: terminalLessons) { screen = .start }
+                StatsView(courses: terminalCourses) { screen = .start }
             }
         }
         .id(lang)
@@ -109,7 +112,7 @@ struct StartView: View {
 }
 
 struct LessonListView: View {
-    let lessons: [Lesson]
+    let courses: [Course]
     let open: (Int) -> Void
     let back: () -> Void
 
@@ -117,20 +120,20 @@ struct LessonListView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(Training.terminal.title).font(.largeTitle.bold())
             Text(tr("Выбери тренировку цифрой", "Choose a training by number")).foregroundStyle(.secondary)
-            ForEach(lessons.indices, id: \.self) { i in
+            ForEach(courses.indices, id: \.self) { i in
+                let c = courses[i]
                 Button { open(i) } label: {
                     HStack(spacing: 14) {
                         KeyCap(text: "\(i + 1)")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(lessons[i].title).font(.headline)
-                            Text(lessons[i].subtitle).foregroundStyle(.secondary)
+                            Text(c.title).font(.headline)
+                            Text(c.subtitle).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        let done = Stats.shared.lesson(lessons[i].id).completed
-                        if done > 0 {
-                            Text("✓ \(done)").foregroundColor(.green).help(tr("Сколько раз пройдена", "Times completed"))
-                        }
-                        Text(tr("\(lessons[i].exercises.count) упр.", "\(lessons[i].exercises.count) ex.")).foregroundStyle(.secondary)
+                        LevelMarks(course: c)
+                        Text(tr("\(c.levels.map(\.exercises.count).reduce(0, +)) упр.", "\(c.levels.map(\.exercises.count).reduce(0, +)) ex."))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 64, alignment: .trailing)
                     }
                     .contentShape(Rectangle())
                 }
@@ -141,6 +144,65 @@ struct LessonListView: View {
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
         }
         .padding(28)
+    }
+}
+
+// три кружка: какие уровни пройдены
+struct LevelMarks: View {
+    let course: Course
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(course.levels.indices, id: \.self) { n in
+                Image(systemName: Stats.shared.lesson(course.levels[n].id).completed > 0 ? "circle.fill" : "circle")
+                    .font(.caption)
+                    .foregroundColor(Stats.shared.lesson(course.levels[n].id).completed > 0 ? .green : .secondary)
+            }
+        }
+        .help(tr("Пройденные уровни", "Completed levels"))
+    }
+}
+
+struct LevelListView: View {
+    let course: Course
+    let open: (Int) -> Void
+    let back: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(course.title).font(.largeTitle.bold())
+            Text(tr("Выбери уровень цифрой", "Choose a level by number")).foregroundStyle(.secondary)
+            ForEach(course.levels.indices, id: \.self) { n in
+                let lesson = course.levels[n]
+                let s = Stats.shared.lesson(lesson.id)
+                Button { open(n) } label: {
+                    HStack(spacing: 14) {
+                        KeyCap(text: "\(n + 1)")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(levelName(n)).font(.headline)
+                            Text(levelInfo(n)).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if s.completed > 0 {
+                            Text("✓ \(s.completed)").foregroundColor(.green).help(tr("Сколько раз пройден", "Times completed"))
+                        }
+                        Text(tr("\(lesson.exercises.count) упр.", "\(lesson.exercises.count) ex.")).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(KeyEquivalent(Character("\(n + 1)")), modifiers: [])
+            }
+            Spacer()
+            Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
+        }
+        .padding(28)
+    }
+
+    private func levelInfo(_ n: Int) -> String {
+        [tr("Основные команды, в задании сказано, что набрать", "The basics, the task says what to type"),
+         tr("Задание без готовой команды, нужно вспомнить самому", "No ready command in the task, recall it yourself"),
+         tr("Несколько шагов и сочетания команд", "Several steps and combined commands")][n]
     }
 }
 
@@ -259,13 +321,14 @@ struct ExerciseView: View {
                 Spacer()
                 VStack(spacing: 8) {
                     Text(tr("Тренировка «\(runner.lesson.title)» пройдена", "Training “\(runner.lesson.title)” completed")).font(.title.bold())
-                    Text(tr("Enter — к списку тренировок", "Enter — back to trainings")).foregroundStyle(.secondary)
+                    Text(tr("Уровень: \(levelName(runner.lesson.level))", "Level: \(levelName(runner.lesson.level))")).font(.title3)
+                    Text(tr("Enter — к выбору уровня", "Enter — back to levels")).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 Spacer()
             } else {
                 HStack {
-                    Text(runner.lesson.title).font(.headline)
+                    Text("\(runner.lesson.title) · \(levelName(runner.lesson.level))").font(.headline)
                     Spacer()
                     Text("\(runner.index + 1) / \(runner.lesson.exercises.count)").foregroundStyle(.secondary)
                 }
@@ -274,9 +337,7 @@ struct ExerciseView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if runner.showHint {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(tr("Подсказка", "Hint")).font(.caption).foregroundStyle(.secondary)
-                        Text(runner.exercise.hint)
-                            .font(.system(.title3, design: .monospaced).weight(.semibold))
+                        HintSteps(hint: runner.exercise.hint)
                         if !runner.exercise.note.isEmpty {
                             Text(LocalizedStringKey(runner.exercise.note))
                                 .foregroundStyle(.secondary)
@@ -302,48 +363,40 @@ struct ExerciseView: View {
 }
 
 struct StatsView: View {
-    let lessons: [Lesson]
+    let courses: [Course]
     let back: () -> Void
     @ObservedObject private var stats = Stats.shared
     @State private var selected: Int?
 
     var body: some View {
-        if let i = selected { detail(lessons[i]) } else { overview }
+        if let i = selected { detail(courses[i]) } else { overview }
     }
 
     private var overview: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(tr("Статистика", "Statistics")).font(.largeTitle.bold())
             HStack(spacing: 12) {
-                tile("\(stats.completed)", tr("тренировок пройдено", "trainings completed"))
+                tile("\(stats.completed)", tr("уровней пройдено", "levels completed"))
                 tile("\(stats.solved)", tr("упражнений решено", "exercises solved"))
                 tile(duration(stats.time), tr("в упражнениях", "in exercises"))
                 tile("\(stats.days)", tr("дней занятий", "days of practice"))
             }
             Text(tr("Цифра — подробнее о тренировке", "Number — training details")).foregroundStyle(.secondary).padding(.top, 8)
-            ForEach(lessons.indices, id: \.self) { i in
-                let s = stats.lesson(lessons[i].id)
+            ForEach(courses.indices, id: \.self) { i in
+                let c = courses[i]
+                let all = c.levels.map { stats.lesson($0.id) }
+                let total = c.levels.map(\.exercises.count).reduce(0, +)
                 Button { selected = i } label: {
                     HStack(spacing: 14) {
                         KeyCap(text: "\(i + 1)")
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(lessons[i].title).font(.headline)
-                            Text(tr("решено \(s.solvedCount) из \(lessons[i].exercises.count) упр., подсказок \(s.hints)",
-                                    "solved \(s.solvedCount) of \(lessons[i].exercises.count) ex., hints \(s.hints)"))
+                            Text(c.title).font(.headline)
+                            Text(tr("решено \(all.map(\.solvedCount).reduce(0, +)) из \(total) упр., подсказок \(all.map(\.hints).reduce(0, +))",
+                                    "solved \(all.map(\.solvedCount).reduce(0, +)) of \(total) ex., hints \(all.map(\.hints).reduce(0, +))"))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            if s.completed > 0 {
-                                Text(tr("пройдена \(times(s.completed))", "completed \(times(s.completed))"))
-                            } else {
-                                Text(tr("не пройдена", "not completed")).foregroundStyle(.secondary)
-                            }
-                            if let best = s.bestTime, let last = s.lastCompleted {
-                                Text(tr("лучшее \(clock(best)) · \(shortDate(last))", "best \(clock(best)) · \(shortDate(last))"))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        LevelMarks(course: c)
                     }
                     .contentShape(Rectangle())
                 }
@@ -366,25 +419,29 @@ struct StatsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.1)))
     }
 
-    private func detail(_ lesson: Lesson) -> some View {
-        let s = stats.lesson(lesson.id)
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(lesson.title).font(.largeTitle.bold())
-            Text(tr("Начата \(times(s.started)), пройдена \(times(s.completed))", "Started \(times(s.started)), completed \(times(s.completed))")
-                 + (s.bestTime.map { tr(", лучшее время \(clock($0))", ", best time \(clock($0))") } ?? ""))
-                .foregroundStyle(.secondary)
+    private func detail(_ course: Course) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(course.title).font(.largeTitle.bold())
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(lesson.exercises.indices, id: \.self) { i in
-                        let e = s.exercise(i)
-                        HStack(spacing: 12) {
-                            Text("\(i + 1)").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).frame(width: 24, alignment: .trailing)
-                            Text(LocalizedStringKey(lesson.exercises[i].task)).lineLimit(1)
-                            Spacer()
-                            Text("✓ \(e.solved)").foregroundColor(e.solved > 0 ? .green : .secondary)
-                                .help(tr("Сколько раз решено", "Times solved"))
-                            Text("? \(e.hints)").foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-                                .help(tr("Сколько раз открыта подсказка", "Times hint was shown"))
+                    ForEach(course.levels.indices, id: \.self) { n in
+                        let lesson = course.levels[n]
+                        let s = stats.lesson(lesson.id)
+                        Text(levelName(n)).font(.title3.bold()).padding(.top, n == 0 ? 0 : 12)
+                        Text(tr("Начат \(times(s.started)), пройден \(times(s.completed))", "Started \(times(s.started)), completed \(times(s.completed))")
+                             + (s.bestTime.map { tr(", лучшее время \(clock($0))", ", best time \(clock($0))") } ?? ""))
+                            .foregroundStyle(.secondary)
+                        ForEach(lesson.exercises.indices, id: \.self) { i in
+                            let e = s.exercise(i)
+                            HStack(spacing: 12) {
+                                Text("\(i + 1)").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).frame(width: 24, alignment: .trailing)
+                                Text(LocalizedStringKey(lesson.exercises[i].task)).lineLimit(1)
+                                Spacer()
+                                Text("✓ \(e.solved)").foregroundColor(e.solved > 0 ? .green : .secondary)
+                                    .help(tr("Сколько раз решено", "Times solved"))
+                                Text("? \(e.hints)").foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
+                                    .help(tr("Сколько раз открыта подсказка", "Times hint was shown"))
+                            }
                         }
                     }
                 }
@@ -392,5 +449,28 @@ struct StatsView: View {
             Button(tr("Назад (Esc)", "Back (Esc)")) { selected = nil }.keyboardShortcut(.cancelAction)
         }
         .padding(28)
+    }
+}
+
+// шаги подсказки пишутся через «  →  », показываем их нумерованным списком,
+// чтобы стрелку не приняли за часть команды
+struct HintSteps: View {
+    let hint: String
+
+    var body: some View {
+        let steps = hint.components(separatedBy: "  →  ")
+        VStack(alignment: .leading, spacing: 4) {
+            Text(steps.count > 1 ? tr("Подсказка: по шагам, каждый отдельно", "Hint: step by step, one at a time") : tr("Подсказка", "Hint"))
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(steps.indices, id: \.self) { i in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    if steps.count > 1 {
+                        Text("\(i + 1).").foregroundStyle(.secondary).frame(minWidth: 24, alignment: .trailing)
+                    }
+                    Text(steps[i])
+                }
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+            }
+        }
     }
 }
