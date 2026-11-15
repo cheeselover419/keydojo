@@ -16,6 +16,9 @@ struct KeyDojoApp: App {
     }
 }
 
+// имя из учётной записи macOS: первое слово полного имени, иначе логин
+let userName: String = NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+
 // стандартная панель с ссылкой на GitHub, как в KeyMeter
 func showAbout() {
     let center = NSMutableParagraphStyle()
@@ -97,6 +100,7 @@ struct StartView: View {
         VStack(spacing: 24) {
             VStack(spacing: 8) {
                 Text("KeyDojo").font(.largeTitle.bold())
+                Text(tr("Привет, \(userName)!", "Hi, \(userName)!")).font(.title2)
                 Text(tr("Выбери тренировку", "Choose a training")).foregroundStyle(.secondary)
             }
             HStack(spacing: 16) {
@@ -564,6 +568,15 @@ struct StatsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    HStack(spacing: 4) {
+                        ForEach(0..<3, id: \.self) { n in
+                            let passed = examModes.contains { stats.exam(n, $0).passed > 0 }
+                            Image(systemName: passed ? "circle.fill" : "circle")
+                                .font(.caption)
+                                .foregroundColor(passed ? .green : .secondary)
+                        }
+                    }
+                    .help(tr("Уровни, где экзамен сдан", "Levels with a passed exam"))
                 }
                 .contentShape(Rectangle())
             }
@@ -575,26 +588,37 @@ struct StatsView: View {
         .padding(28)
     }
 
-    // по каждому уровню оба варианта экзамена
+    private let examModes: [ExamMode] = [.limited, .full]
+
+    // как подробности тренировки: уровни, в них строки по вариантам
     private var examDetail: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(tr("Экзамены", "Exams")).font(.largeTitle.bold())
-            Text(tr("Сдан — решены все \(ExamRunner.size) вопросов", "Passed — all \(ExamRunner.size) questions solved")).foregroundStyle(.secondary)
-            ForEach(0..<3, id: \.self) { n in
-                Text(levelName(n)).font(.title3.bold()).padding(.top, 8)
-                ForEach([ExamMode.limited, .full], id: \.self) { mode in
-                    let e = stats.exam(n, mode)
-                    HStack(spacing: 12) {
-                        Text(mode.title).frame(width: 140, alignment: .leading)
-                        Text(e.taken == 0 ? tr("ещё не сдавал", "not taken yet")
-                             : tr("сдан \(e.passed) из \(e.taken), лучший результат \(e.bestCorrect) из \(ExamRunner.size)",
-                                  "passed \(e.passed) of \(e.taken), best result \(e.bestCorrect) of \(ExamRunner.size)")
-                               + (e.bestTime.map { tr(", лучшее время \(clock($0))", ", best time \(clock($0))") } ?? ""))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(0..<3, id: \.self) { n in
+                        let all = examModes.map { stats.exam(n, $0) }
+                        let best = all.compactMap(\.bestTime).min()
+                        Text(levelName(n)).font(.title3.bold()).padding(.top, n == 0 ? 0 : 12)
+                        Text(tr("Начат \(times(all.map(\.taken).reduce(0, +))), сдан \(times(all.map(\.passed).reduce(0, +)))",
+                                "Started \(times(all.map(\.taken).reduce(0, +))), passed \(times(all.map(\.passed).reduce(0, +)))")
+                             + (best.map { tr(", лучшее время \(clock($0))", ", best time \(clock($0))") } ?? ""))
                             .foregroundStyle(.secondary)
+                        ForEach(examModes.indices, id: \.self) { i in
+                            let e = all[i]
+                            HStack(spacing: 12) {
+                                Text("\(i + 1)").font(.system(.body, design: .monospaced)).foregroundStyle(.secondary).frame(width: 24, alignment: .trailing)
+                                Text(examModes[i].title).lineLimit(1)
+                                Spacer()
+                                Text("✓ \(e.passed)").foregroundColor(e.passed > 0 ? .green : .secondary)
+                                    .help(tr("Сколько раз сдан", "Times passed"))
+                                Text("\(e.bestCorrect)/\(ExamRunner.size)").foregroundStyle(.secondary).frame(width: 48, alignment: .trailing)
+                                    .help(tr("Лучший результат", "Best result"))
+                            }
+                        }
                     }
                 }
             }
-            Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)")) { exams = false }.keyboardShortcut(.cancelAction)
         }
         .padding(28)
