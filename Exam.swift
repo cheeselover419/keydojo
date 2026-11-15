@@ -4,6 +4,10 @@ import Combine
 enum ExamMode {
     case limited   // заканчивается после maxMistakes ошибок
     case full      // проходится до конца
+
+    var title: String {
+        self == .limited ? tr("До \(ExamRunner.maxMistakes) ошибок", "Up to \(ExamRunner.maxMistakes) mistakes") : tr("Полный", "Full")
+    }
 }
 
 struct ExamQuestion {

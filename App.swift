@@ -380,6 +380,7 @@ final class LessonRunner: ObservableObject {
     let start = Date()
     var elapsed: Double?                 // итоговое время, когда тренировка пройдена
     private var hinted: Set<Int> = []   // подсказку считаем один раз на упражнение
+    private(set) var skipped: Set<Int> = []
 
     init(_ lesson: Lesson) {
         self.lesson = lesson
@@ -406,13 +407,14 @@ final class LessonRunner: ObservableObject {
             finished = true
             let t = Date().timeIntervalSince(start)
             elapsed = t
-            Stats.shared.completed(lesson.id, time: t)
+            // с пропусками уровень не засчитывается
+            if skipped.isEmpty { Stats.shared.completed(lesson.id, time: t) }
         }
     }
 
     // false: клавишу обрабатывает система (например ⌘Q)
     func handle(_ key: Key, back: () -> Void) -> Bool {
-        let own = ["cmd+r", "cmd+/"].contains(key.name) || Terminal.cmdKeys.contains(key.name)
+        let own = ["cmd+r", "cmd+/", "cmd+enter"].contains(key.name) || Terminal.cmdKeys.contains(key.name)
         if key.name.hasPrefix("cmd+") && !own { return false }
         if finished {
             if key.name == "enter" || key.name == "esc" { back() }
@@ -420,6 +422,10 @@ final class LessonRunner: ObservableObject {
         }
         switch key.name {
         case "cmd+r": reset(); return true
+        case "cmd+enter":
+            if !solved { skipped.insert(index) }
+            next()
+            return true
         case "cmd+/":
             showHint.toggle()
             if showHint, !solved, hinted.insert(index).inserted { Stats.shared.hint(lesson.id, index) }
@@ -457,7 +463,9 @@ struct ExerciseView: View {
             if runner.finished {
                 Spacer()
                 VStack(spacing: 8) {
-                    Text(tr("Тренировка «\(runner.lesson.title)» пройдена", "Training “\(runner.lesson.title)” completed")).font(.title.bold())
+                    Text(runner.skipped.isEmpty ? tr("Тренировка «\(runner.lesson.title)» пройдена", "Training “\(runner.lesson.title)” completed")
+                         : tr("Тренировка «\(runner.lesson.title)» не засчитана: пропущено \(runner.skipped.count)",
+                              "Training “\(runner.lesson.title)” not counted: \(runner.skipped.count) skipped")).font(.title.bold())
                     Text(tr("Уровень: \(levelName(runner.lesson.level))", "Level: \(levelName(runner.lesson.level))")).font(.title3)
                     Text(tr("Время: \(clock(runner.elapsed ?? 0))", "Time: \(clock(runner.elapsed ?? 0))")).font(.title3).monospacedDigit()
                     Text(tr("Enter — к выбору уровня", "Enter — back to levels")).foregroundStyle(.secondary)
@@ -495,7 +503,7 @@ struct ExerciseView: View {
                 if runner.solved {
                     Text(tr("✓ Готово! Enter — следующее упражнение", "✓ Done! Enter — next exercise")).bold().foregroundColor(.green)
                 } else {
-                    Text(tr("⌘/ подсказка    ⌘R заново    Esc к списку", "⌘/ hint    ⌘R restart    Esc to list")).font(.callout).foregroundStyle(.secondary)
+                    Text(tr("⌘/ подсказка    ⌘R заново    ⌘Enter пропустить    Esc к списку", "⌘/ hint    ⌘R restart    ⌘Enter skip    Esc to list")).font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
@@ -510,9 +518,10 @@ struct StatsView: View {
     let back: () -> Void
     @ObservedObject private var stats = Stats.shared
     @State private var selected: Int?
+    @State private var exams = false
 
     var body: some View {
-        if let i = selected { detail(courses[i]) } else { overview }
+        if exams { examDetail } else if let i = selected { detail(courses[i]) } else { overview }
     }
 
     private var overview: some View {
@@ -546,8 +555,47 @@ struct StatsView: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: [])
             }
+            Button { exams = true } label: {
+                HStack(spacing: 14) {
+                    KeyCap(text: "E")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Экзамены", "Exams")).font(.headline)
+                        Text(tr("сдано \(stats.examsPassed) из \(stats.examsTaken)", "passed \(stats.examsPassed) of \(stats.examsTaken)"))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("e", modifiers: [])
             Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
+        }
+        .padding(28)
+    }
+
+    // по каждому уровню оба варианта экзамена
+    private var examDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tr("Экзамены", "Exams")).font(.largeTitle.bold())
+            Text(tr("Сдан — решены все \(ExamRunner.size) вопросов", "Passed — all \(ExamRunner.size) questions solved")).foregroundStyle(.secondary)
+            ForEach(0..<3, id: \.self) { n in
+                Text(levelName(n)).font(.title3.bold()).padding(.top, 8)
+                ForEach([ExamMode.limited, .full], id: \.self) { mode in
+                    let e = stats.exam(n, mode)
+                    HStack(spacing: 12) {
+                        Text(mode.title).frame(width: 140, alignment: .leading)
+                        Text(e.taken == 0 ? tr("ещё не сдавал", "not taken yet")
+                             : tr("сдан \(e.passed) из \(e.taken), лучший результат \(e.bestCorrect) из \(ExamRunner.size)",
+                                  "passed \(e.passed) of \(e.taken), best result \(e.bestCorrect) of \(ExamRunner.size)")
+                               + (e.bestTime.map { tr(", лучшее время \(clock($0))", ", best time \(clock($0))") } ?? ""))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            Button(tr("Назад (Esc)", "Back (Esc)")) { exams = false }.keyboardShortcut(.cancelAction)
         }
         .padding(28)
     }
@@ -632,9 +680,9 @@ struct ExamSetupView: View {
             Text(tr("Экзамен", "Exam")).font(.largeTitle.bold())
             if let level {
                 Text(tr("Уровень: \(levelName(level)). Выбери вариант цифрой", "Level: \(levelName(level)). Choose a mode by number")).foregroundStyle(.secondary)
-                row(1, tr("До \(ExamRunner.maxMistakes) ошибок", "Up to \(ExamRunner.maxMistakes) mistakes"),
+                row(1, ExamMode.limited.title,
                     tr("Экзамен закончится на \(ExamRunner.maxMistakes)-й ошибке", "The exam ends at mistake number \(ExamRunner.maxMistakes)")) { start(level, .limited) }
-                row(2, tr("Полный", "Full"),
+                row(2, ExamMode.full.title,
                     tr("Все \(ExamRunner.size) вопросов, ошибки считаются, но экзамен не прерывают", "All \(ExamRunner.size) questions, mistakes are counted but don't stop the exam")) { start(level, .full) }
             } else {
                 Text(tr("\(ExamRunner.size) случайных вопросов, \(Int(ExamRunner.timeLimit) / 60) минут, подсказок нет. Выбери уровень цифрой", "\(ExamRunner.size) random questions, \(Int(ExamRunner.timeLimit) / 60) minutes, no hints. Choose a level by number")).foregroundStyle(.secondary)
@@ -685,6 +733,12 @@ struct ExamView: View {
             if runner.finished { results } else { question }
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in runner.tick() }
+        .onChange(of: runner.finished) { done in
+            if done {
+                Stats.shared.examFinished(level: runner.level, mode: runner.mode, correct: runner.correct,
+                                          total: runner.questions.count, time: runner.spent)
+            }
+        }
         .padding(20)
         .background(KeyCatcher { key in
             if runner.finished { return resultsKey(key) }

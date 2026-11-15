@@ -17,6 +17,13 @@ struct LessonStats: Codable {
     var hints: Int { exercises.values.reduce(0) { $0 + $1.hints } }
 }
 
+struct ExamStats: Codable {
+    var taken = 0
+    var passed = 0          // все вопросы решены
+    var bestCorrect = 0
+    var bestTime: Double?   // среди сданных
+}
+
 // статистика хранится в UserDefaults в JSON
 final class Stats: ObservableObject {
     static let shared = Stats()
@@ -25,6 +32,18 @@ final class Stats: ObservableObject {
         var lessons: [String: LessonStats] = [:]
         var days: Set<String> = []     // дни занятий, yyyy-MM-dd
         var time: Double = 0           // секунд в упражнениях
+        var exams: [String: ExamStats] = [:]   // ключ — уровень и вариант, «0.full»
+
+        init() {}
+
+        // старая статистика без экзаменов тоже читается
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            lessons = try c.decodeIfPresent([String: LessonStats].self, forKey: .lessons) ?? [:]
+            days = try c.decodeIfPresent(Set<String>.self, forKey: .days) ?? []
+            time = try c.decodeIfPresent(Double.self, forKey: .time) ?? 0
+            exams = try c.decodeIfPresent([String: ExamStats].self, forKey: .exams) ?? [:]
+        }
     }
 
     @Published private var data: Store
@@ -39,6 +58,26 @@ final class Stats: ObservableObject {
     var time: Double { data.time }
     var completed: Int { data.lessons.values.reduce(0) { $0 + $1.completed } }
     var solved: Int { data.lessons.values.reduce(0) { $0 + $1.exercises.values.reduce(0) { $0 + $1.solved } } }
+
+    func exam(_ level: Int, _ mode: ExamMode) -> ExamStats { data.exams[examKey(level, mode)] ?? ExamStats() }
+    var examsTaken: Int { data.exams.values.reduce(0) { $0 + $1.taken } }
+    var examsPassed: Int { data.exams.values.reduce(0) { $0 + $1.passed } }
+
+    func examFinished(level: Int, mode: ExamMode, correct: Int, total: Int, time: Double) {
+        let key = examKey(level, mode)
+        var e = data.exams[key] ?? ExamStats()
+        e.taken += 1
+        e.bestCorrect = max(e.bestCorrect, correct)
+        if correct == total {
+            e.passed += 1
+            e.bestTime = min(e.bestTime ?? time, time)
+        }
+        data.exams[key] = e
+        markDay()
+        save()
+    }
+
+    private func examKey(_ level: Int, _ mode: ExamMode) -> String { "\(level).\(mode == .limited ? "limited" : "full")" }
 
     func started(_ id: String) {
         update(id) { $0.started += 1 }
@@ -72,10 +111,14 @@ final class Stats: ObservableObject {
 
     private func update(_ id: String, _ change: (inout LessonStats) -> Void) {
         change(&data.lessons[id, default: LessonStats()])
+        markDay()
+        save()
+    }
+
+    private func markDay() {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         data.days.insert(f.string(from: Date()))
-        save()
     }
 
     private func save() {
