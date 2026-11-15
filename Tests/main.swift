@@ -178,9 +178,9 @@ for (ci, course) in terminalCourses.enumerated() {
 }
 
 // экзамен
-func check(_ ok: Bool, _ name: String) {
+func check(_ ok: Bool, _ name: String, _ group: String = "экзамен") {
   if !ok { fails += 1 }
-  print(ok ? "ok  " : "FAIL", "экзамен:", name)
+  print(ok ? "ok  " : "FAIL", group + ":", name)
 }
 do {
   let courses = terminalCourses
@@ -239,6 +239,33 @@ do {
   let ok = t.lines.last?.hasPrefix("       1 ") == true
   if !ok { fails += 1 }
   print(ok ? "ok  " : "FAIL", "nano: Ctrl+K в конце файла не добавляет пустых строк")
+}
+
+// тренажёр печати
+do {
+  let r = TypingRunner(lang: .ru, duration: 30, words: 50)
+  let t0 = Date()
+  let word = String(r.target.prefix { $0 != " " })
+  check(r.lines.allSatisfy { $0.count <= 43 } && r.lines.first?.lowerBound == 0 && r.lines.last?.upperBound == r.target.count, "строки покрывают весь текст", "печать")
+  check(typingWords(.ru).count > 200 && typingWords(.en).count > 200, "слов больше 200", "печать")
+  _ = r.handle(k("space", " "), now: t0)
+  check(r.mistakes == 1 && r.started == t0, "таймер стартует с первого нажатия, неверная буква — ошибка", "печать")
+  _ = r.handle(k("backspace"))
+  check(r.typed.isEmpty && r.mistakes == 1, "Backspace стирает, ошибка остаётся", "печать")
+  for c in word { _ = r.handle(k("a", String(c))) }
+  check(r.correctChars == word.count && r.keystrokes == word.count + 1, "верные буквы засчитаны", "печать")
+  _ = r.handle(k("f", "a"))
+  check(r.wrongLayout, "латинская буква в русском тексте — не та раскладка", "печать")
+  check(!r.handle(k("cmd+r")) && !r.handle(k("enter")), "⌘ и Enter не печатают", "печать")
+  r.tick(now: t0.addingTimeInterval(15))
+  check(!r.finished && r.secondsLeft == 15 && r.cpm == 0, "таймер идёт, скорость до конца не считается", "печать")
+  _ = r.handle(k("backspace"))
+  check(r.correctChars == word.count, "Backspace по ошибке не трогает верные буквы", "печать")
+  _ = r.handle(k("backspace"))
+  check(r.correctChars == word.count - 1, "Backspace по верной букве убирает её из счёта", "печать")
+  r.tick(now: t0.addingTimeInterval(31))
+  check(r.finished && r.remaining == 0 && r.secondsLeft == 0 && !r.handle(k("a", "ф")), "через 30 секунд заход закончен", "печать")
+  check(r.cpm == (word.count - 1) * 2, "скорость в знаках в минуту в конце", "печать")
 }
 
 print("провалено:", fails)

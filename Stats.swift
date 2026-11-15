@@ -24,6 +24,35 @@ struct ExamStats: Codable {
     var bestTime: Double?   // среди сданных
 }
 
+struct TypingRun: Codable {
+    var date: Date
+    var cpm: Int
+    var accuracy: Int
+}
+
+struct TypingStats: Codable {
+    var runs = 0
+    var bestCpm = 0
+    var cpmSum = 0
+    var accuracySum = 0
+    var history: [TypingRun] = []   // каждая попытка, для графика
+
+    init() {}
+
+    // статистика до графика без истории тоже читается
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        runs = try c.decodeIfPresent(Int.self, forKey: .runs) ?? 0
+        bestCpm = try c.decodeIfPresent(Int.self, forKey: .bestCpm) ?? 0
+        cpmSum = try c.decodeIfPresent(Int.self, forKey: .cpmSum) ?? 0
+        accuracySum = try c.decodeIfPresent(Int.self, forKey: .accuracySum) ?? 0
+        history = try c.decodeIfPresent([TypingRun].self, forKey: .history) ?? []
+    }
+
+    var averageCpm: Int { runs > 0 ? cpmSum / runs : 0 }
+    var averageAccuracy: Int { runs > 0 ? accuracySum / runs : 0 }
+}
+
 // статистика хранится в UserDefaults в JSON
 final class Stats: ObservableObject {
     static let shared = Stats()
@@ -33,6 +62,7 @@ final class Stats: ObservableObject {
         var days: Set<String> = []     // дни занятий, yyyy-MM-dd
         var time: Double = 0           // секунд в упражнениях
         var exams: [String: ExamStats] = [:]   // ключ — уровень и вариант, «0.full»
+        var typing: [String: TypingStats] = [:]   // ключ — язык и время, «ru.30»
 
         init() {}
 
@@ -43,6 +73,7 @@ final class Stats: ObservableObject {
             days = try c.decodeIfPresent(Set<String>.self, forKey: .days) ?? []
             time = try c.decodeIfPresent(Double.self, forKey: .time) ?? 0
             exams = try c.decodeIfPresent([String: ExamStats].self, forKey: .exams) ?? [:]
+            typing = try c.decodeIfPresent([String: TypingStats].self, forKey: .typing) ?? [:]
         }
     }
 
@@ -76,6 +107,25 @@ final class Stats: ObservableObject {
         markDay()
         save()
     }
+
+    func typing(_ lang: Lang, _ duration: Double) -> TypingStats { data.typing[typingKey(lang, duration)] ?? TypingStats() }
+    var typingRuns: Int { data.typing.values.reduce(0) { $0 + $1.runs } }
+    var typingBest: Int { data.typing.values.map(\.bestCpm).max() ?? 0 }
+
+    func typingFinished(lang: Lang, duration: Double, cpm: Int, accuracy: Int) {
+        let key = typingKey(lang, duration)
+        var t = data.typing[key] ?? TypingStats()
+        t.runs += 1
+        t.bestCpm = max(t.bestCpm, cpm)
+        t.cpmSum += cpm
+        t.accuracySum += accuracy
+        t.history.append(TypingRun(date: Date(), cpm: cpm, accuracy: accuracy))
+        data.typing[key] = t
+        markDay()
+        save()
+    }
+
+    private func typingKey(_ lang: Lang, _ duration: Double) -> String { "\(lang.rawValue).\(Int(duration))" }
 
     private func examKey(_ level: Int, _ mode: ExamMode) -> String { "\(level).\(mode == .limited ? "limited" : "full")" }
 

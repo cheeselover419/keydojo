@@ -52,6 +52,7 @@ enum Screen: Equatable {
     case exercise(Int, Int)
     case exam
     case examRun(Int, ExamMode)
+    case typingRun(Lang, Double)
     case stats
 }
 
@@ -73,8 +74,12 @@ struct ContentView: View {
                 ExamView(level: level, mode: mode) { screen = .exam }
             case .levels(let i):
                 LevelListView(course: terminalCourses[i], open: { screen = .exercise(i, $0) }, back: { screen = .lessons(.terminal) })
-            case .lessons(let training):
-                PlaceholderView(title: training.title) { screen = .start }
+            case .lessons(.typing):
+                TypingSetupView(start: { screen = .typingRun($0, $1) }, back: { screen = .start })
+            case .typingRun(let l, let duration):
+                TypingView(lang: l, duration: duration) { screen = .lessons(.typing) }
+            case .lessons(.vscode):
+                PlaceholderView(title: Training.vscode.title) { screen = .start }
             case .exercise(let i, let level):
                 ExerciseView(lesson: terminalCourses[i].levels[level]) { screen = .levels(i) }
             case .stats:
@@ -533,7 +538,7 @@ struct StatsView: View {
     @State private var typing = false
 
     var body: some View {
-        if typing { PlaceholderView(title: Training.typing.title) { typing = false } }
+        if typing { typingDetail }
         else if exams { examDetail } else if let i = selected { detail(courses[i]) } else { overview }
     }
 
@@ -596,7 +601,9 @@ struct StatsView: View {
                     KeyCap(text: "P")
                     VStack(alignment: .leading, spacing: 2) {
                         Text(Training.typing.title).font(.headline)
-                        Text(tr("пока нет данных", "no data yet")).foregroundStyle(.secondary)
+                        Text(stats.typingRuns == 0 ? tr("пока нет данных", "no data yet")
+                             : tr("заходов \(stats.typingRuns), лучшая скорость \(stats.typingBest) зн/мин", "runs \(stats.typingRuns), best speed \(stats.typingBest) cpm"))
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
@@ -642,6 +649,36 @@ struct StatsView: View {
                 }
             }
             Button(tr("Назад (Esc)", "Back (Esc)")) { exams = false }.keyboardShortcut(.cancelAction)
+        }
+        .padding(28)
+    }
+
+    // по языкам, в них строки по времени захода
+    private var typingDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(Training.typing.title).font(.largeTitle.bold())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Lang.allCases.indices, id: \.self) { n in
+                        let l = Lang.allCases[n]
+                        Text(l.name).font(.title3.bold()).padding(.top, n == 0 ? 0 : 12)
+                        ForEach(TypingRunner.durations, id: \.self) { d in
+                            let t = stats.typing(l, d)
+                            HStack(spacing: 12) {
+                                Text(secondsName(d)).frame(width: 110, alignment: .leading)
+                                Text(tr("заходов \(t.runs)", "runs \(t.runs)")).foregroundStyle(.secondary)
+                                Spacer()
+                                if t.runs > 0 {
+                                    Text(tr("лучшая \(t.bestCpm), средняя \(t.averageCpm) зн/мин", "best \(t.bestCpm), average \(t.averageCpm) cpm")).monospacedDigit()
+                                    Text(tr("точность \(t.averageAccuracy)%", "accuracy \(t.averageAccuracy)%")).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        TypingChart(lang: l)
+                    }
+                }
+            }
+            Button(tr("Назад (Esc)", "Back (Esc)")) { typing = false }.keyboardShortcut(.cancelAction)
         }
         .padding(28)
     }
