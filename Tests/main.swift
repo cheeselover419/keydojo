@@ -177,5 +177,60 @@ for (ci, course) in terminalCourses.enumerated() {
   }
 }
 
+// экзамен
+func check(_ ok: Bool, _ name: String) {
+  if !ok { fails += 1 }
+  print(ok ? "ok  " : "FAIL", "экзамен:", name)
+}
+do {
+  let courses = terminalCourses
+  for level in 0...2 {
+    let r = ExamRunner(courses: courses, level: level, mode: .full)
+    let pool = Set(courses.flatMap { $0.levels[level].exercises.map(\.task) })
+    let tasks = r.questions.map(\.exercise.task)
+    check(tasks.count == ExamRunner.size && Set(tasks).count == tasks.count && tasks.allSatisfy(pool.contains), "уровень \(level + 1): 10 разных вопросов своего уровня")
+  }
+  let runs = (0..<5).map { _ in ExamRunner(courses: courses, level: 0, mode: .full).questions.map(\.exercise.task) }
+  check(Set(runs.map { $0.joined(separator: "|") }).count > 1, "вопросы каждый раз разные")
+
+  // в горячих клавишах foo не всегда ошибка: дописывается к готовой строке или уходит в tail -f
+  let shell = courses.filter { $0.levels[0].id != "hotkeys" }
+  let lim = ExamRunner(courses: shell, level: 0, mode: .limited)
+  for _ in 0..<2 { cmd("foo").forEach { _ = lim.handle($0) {} } }
+  check(!lim.finished && lim.mistakes == 2, "две ошибки — экзамен продолжается")
+  cmd("foo").forEach { _ = lim.handle($0) {} }
+  check(lim.finished && lim.failedByLimit, "третья ошибка завершает экзамен")
+  check(lim.answers[0].commands.count == 3 && lim.answers[0].commands.allSatisfy(\.failed), "ошибочные команды записаны")
+
+  let full = ExamRunner(courses: shell, level: 0, mode: .full)
+  for _ in 0..<3 { cmd("foo").forEach { _ = full.handle($0) {} } }
+  check(!full.finished && full.mistakes == 3, "полный режим не прерывается на 3 ошибках")
+  _ = full.handle(k("cmd+/")) {}
+  check(full.noHint, "подсказка на экзамене не показывается")
+  for _ in 0..<ExamRunner.size { _ = full.handle(k("cmd+enter")) {} }
+  check(full.finished && full.mistakes == 3 + ExamRunner.size && full.answers.allSatisfy(\.skipped), "пропуски считаются ошибками")
+
+  // решение вопроса: берём ответ из решений лёгкого уровня
+  var answers: [String: [Key]] = [:]
+  for (li, lesson) in terminalLessons.enumerated() {
+    for (ei, ex) in lesson.exercises.enumerated() { answers[ex.task] = solutions[li][ei] }
+  }
+  let ok = ExamRunner(courses: shell, level: 0, mode: .limited)
+  for key in answers[ok.question.exercise.task]! { _ = ok.handle(key) {} }
+  check(ok.solved && ok.answers[0].solved, "правильный ответ засчитан")
+  _ = ok.handle(E) {}
+  check(ok.index == 1 && !ok.solved, "Enter — следующий вопрос")
+  let timed = ExamRunner(courses: courses, level: 1, mode: .full)
+  timed.tick(now: timed.start.addingTimeInterval(60))
+  check(!timed.finished && Int(timed.remaining) == Int(ExamRunner.timeLimit) - 60, "таймер отсчитывает оставшееся время")
+  timed.tick(now: timed.start.addingTimeInterval(ExamRunner.timeLimit + 1))
+  check(timed.finished && timed.timeUp && timed.remaining == 0, "через 15 минут экзамен заканчивается")
+  _ = ok.handle(k("cmd+right")) {}
+  check(ok.index == 1 && !ok.answers[1].skipped, "⌘→ больше не пропускает вопрос")
+  var esc = false
+  _ = ok.handle(ESC) { esc = true }
+  check(esc, "Esc завершает экзамен")
+}
+
 print("провалено:", fails)
 if fails > 0 { exit(1) }

@@ -54,6 +54,7 @@ final class Terminal: ObservableObject {
     var lastOutput: [String] = []
     var lastTypedChars = 0
     var lastNames: [String] = []   // все команды последней строки
+    var commandLog: [(line: String, failed: Bool)] = []   // для экзамена
     var events: Set<String> = []
 
     var cwd: String {
@@ -74,6 +75,7 @@ final class Terminal: ObservableObject {
     func path(_ p: String) -> String { fs.absolute(p, cwd: cwd, tilde: false) }
 
     func resetChecks() {
+        commandLog = []
         lastCommand = ""
         lastOutput = []
         lastTypedChars = 0
@@ -302,7 +304,7 @@ final class Terminal: ObservableObject {
         lastCommand = line
         lastOutput = []
         lastNames = []
-        execute(line)
+        commandLog.append((line, !execute(line)))
     }
 
     private func err(_ line: String) {
@@ -422,8 +424,10 @@ final class Terminal: ObservableObject {
     }
 
     // строка делится на части по ; && ||, каждая часть — конвейер
-    private func execute(_ line: String) {
-        guard let tokens = tokenize(line) else { err("zsh: unmatched quote"); return }
+    // false, если строка завершилась ошибкой
+    @discardableResult
+    private func execute(_ line: String) -> Bool {
+        guard let tokens = tokenize(line) else { err("zsh: unmatched quote"); return false }
         var parts: [(cond: String, tokens: [Token])] = [(";", [])]
         for t in tokens {
             if t.op && [";", "&&", "||"].contains(t.text) {
@@ -436,7 +440,7 @@ final class Terminal: ObservableObject {
             let last = n == parts.count - 1
             if last && p.cond == ";" { continue }
             err("zsh: parse error near `\(last ? p.cond : parts[n + 1].cond)'")
-            return
+            return false
         }
         lastNames = []
         var ok = true
@@ -444,8 +448,9 @@ final class Terminal: ObservableObject {
             if p.cond == "&&" && !ok { continue }
             if p.cond == "||" && ok { continue }
             ok = pipeline(p.tokens)
-            if mode != .shell { return }
+            if mode != .shell { return ok }
         }
+        return ok
     }
 
     // true, если последняя команда завершилась без ошибки

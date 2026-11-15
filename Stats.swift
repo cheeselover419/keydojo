@@ -60,6 +60,11 @@ final class Stats: ObservableObject {
         }
     }
 
+    func reset() {
+        data = Store()
+        save()
+    }
+
     func addTime(_ t: Double) {
         data.time += t
         save()

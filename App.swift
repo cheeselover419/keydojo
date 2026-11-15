@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct KeyDojoApp: App {
+    init() { KeySound.shared.start() }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -20,20 +22,27 @@ enum Screen: Equatable {
     case lessons(Training)
     case levels(Int)
     case exercise(Int, Int)
+    case exam
+    case examRun(Int, ExamMode)
     case stats
 }
 
 struct ContentView: View {
     @State private var screen = Screen.start
+    @State private var settings = false
     @AppStorage("lang") private var lang = Lang.ru
 
     var body: some View {
         Group {
             switch screen {
             case .start:
-                StartView(choose: { screen = .lessons($0) }, stats: { screen = .stats })
+                StartView(choose: { screen = .lessons($0) }, stats: { screen = .stats }, settings: $settings)
             case .lessons(.terminal):
-                LessonListView(courses: terminalCourses, open: { screen = .levels($0) }, back: { screen = .start })
+                LessonListView(courses: terminalCourses, open: { screen = .levels($0) }, exam: { screen = .exam }, back: { screen = .start })
+            case .exam:
+                ExamSetupView(start: { screen = .examRun($0, $1) }, back: { screen = .lessons(.terminal) })
+            case .examRun(let level, let mode):
+                ExamView(level: level, mode: mode) { screen = .exam }
             case .levels(let i):
                 LevelListView(course: terminalCourses[i], open: { screen = .exercise(i, $0) }, back: { screen = .lessons(.terminal) })
             case .lessons(.vscode):
@@ -63,7 +72,7 @@ struct KeyCap: View {
 struct StartView: View {
     let choose: (Training) -> Void
     let stats: () -> Void
-    @State private var settings = false
+    @Binding var settings: Bool
 
     var body: some View {
         VStack(spacing: 24) {
@@ -75,27 +84,28 @@ struct StartView: View {
                 choice(.terminal, key: "t", icon: "terminal")
                 choice(.vscode, key: "v", icon: "chevron.left.forwardslash.chevron.right")
             }
-            Button(action: stats) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chart.bar")
-                    Text(tr("Статистика", "Statistics"))
-                    KeyCap(text: "S")
+            HStack(spacing: 16) {
+                Button(action: stats) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.bar")
+                        Text(tr("Статистика", "Statistics"))
+                        KeyCap(text: "S")
+                    }
                 }
+                .keyboardShortcut("s", modifiers: [])
+                Button { settings.toggle() } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "gearshape")
+                        Text(tr("Настройки", "Settings"))
+                        KeyCap(text: "⌘S")
+                    }
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                .popover(isPresented: $settings, arrowEdge: .bottom) { SettingsView { settings = false } }
             }
-            .keyboardShortcut("s", modifiers: [])
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topTrailing) {
-            Button { settings.toggle() } label: {
-                Image(systemName: "gearshape").font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help(tr("Настройки (⌘,)", "Settings (⌘,)"))
-            .keyboardShortcut(",", modifiers: .command)
-            .popover(isPresented: $settings, arrowEdge: .bottom) { SettingsView() }
-            .padding(16)
-        }
     }
 
     private func choice(_ training: Training, key: Character, icon: String) -> some View {
@@ -114,6 +124,7 @@ struct StartView: View {
 struct LessonListView: View {
     let courses: [Course]
     let open: (Int) -> Void
+    let exam: () -> Void
     let back: () -> Void
 
     var body: some View {
@@ -140,6 +151,20 @@ struct LessonListView: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: [])
             }
+            Button(action: exam) {
+                HStack(spacing: 14) {
+                    KeyCap(text: "E")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Экзамен", "Exam")).font(.headline)
+                        Text(tr("Случайные вопросы из всех тренировок, без подсказок", "Random questions from all trainings, no hints")).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("e", modifiers: [])
+            .padding(.top, 8)
             Spacer()
             Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
         }
@@ -207,18 +232,100 @@ struct LevelListView: View {
 }
 
 struct SettingsView: View {
+    let close: () -> Void
     @AppStorage("lang") private var lang = Lang.ru
+    @AppStorage("keySound") private var keySound = true
+    @AppStorage("keySoundPack") private var pack = SoundPack.thock
+    @State private var confirmReset = false
+    @State private var resetDone = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(tr("Язык", "Language")).font(.headline)
-            Picker("", selection: $lang) {
-                ForEach(Lang.allCases, id: \.self) { Text($0.name).tag($0) }
+            row("L", icon: "globe", lang.name) { switchLang() }
+
+            Text(tr("Звук", "Sound")).font(.headline).padding(.top, 8)
+            row("S", icon: keySound ? "speaker.wave.2" : "speaker.slash",
+                keySound ? tr("Звук клавиш включён", "Key sound on") : tr("Звук клавиш выключен", "Key sound off")) { keySound.toggle() }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(Array(SoundPack.allCases.enumerated()), id: \.element) { i, p in
+                    row("\(i + 1)", icon: pack == p ? "largecircle.fill.circle" : "circle", p.rawValue, selected: pack == p) {
+                        pack = p
+                        if keySound { KeySound.shared.play() }
+                    }
+                }
             }
-            .pickerStyle(.radioGroup)
-            .labelsHidden()
+            .disabled(!keySound)
+
+            Text(tr("Статистика", "Statistics")).font(.headline).padding(.top, 8)
+            if confirmReset {
+                Text(tr("Сбросить всю статистику? Это нельзя отменить.", "Reset all statistics? This can't be undone."))
+                    .foregroundStyle(.red)
+                row("Enter", icon: "trash", tr("Сбросить", "Reset")) { reset() }
+                row("Esc", icon: "xmark", tr("Отмена", "Cancel")) { confirmReset = false }
+            } else {
+                row("R", icon: resetDone ? "checkmark" : "trash",
+                    resetDone ? tr("Статистика сброшена", "Statistics reset") : tr("Сбросить статистику", "Reset statistics")) {
+                    confirmReset = true
+                    resetDone = false
+                }
+            }
+
+            Text(tr("Esc или ⌘S — закрыть", "Esc or ⌘S to close"))
+                .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
         }
         .padding(16)
+        .frame(width: 340)
+        .background(KeyCatcher { key in
+            if confirmReset {
+                switch key.name {
+                case "enter": reset()
+                case "esc": confirmReset = false
+                case "cmd+s": close()
+                default: break
+                }
+                return true
+            }
+            if keySound, let n = Int(key.name), (1...SoundPack.allCases.count).contains(n) {
+                pack = SoundPack.allCases[n - 1]
+                return true
+            }
+            switch key.name {
+            case "r": confirmReset = true; resetDone = false
+            case "l": switchLang()
+            case "s": keySound.toggle()
+            case "esc", "cmd+s": close()
+            default: return false
+            }
+            return true
+        })
+    }
+
+    private func reset() {
+        Stats.shared.reset()
+        confirmReset = false
+        resetDone = true
+    }
+
+    private func switchLang() {
+        let all = Lang.allCases
+        lang = all[(all.firstIndex(of: lang)! + 1) % all.count]
+    }
+
+    // кнопка как на стартовом экране: значок, текст и клавиша
+    private func row(_ key: String, icon: String, _ title: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon).frame(width: 18)
+                Text(title).lineLimit(1)
+                Spacer(minLength: 8)
+                KeyCap(text: key)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 3)
+        }
+        .tint(selected ? .accentColor : nil)
+        .buttonStyle(.bordered)
     }
 }
 
@@ -244,6 +351,7 @@ final class LessonRunner: ObservableObject {
     @Published var showHint = false
     @Published var finished = false
     let start = Date()
+    var elapsed: Double?                 // итоговое время, когда тренировка пройдена
     private var hinted: Set<Int> = []   // подсказку считаем один раз на упражнение
 
     init(_ lesson: Lesson) {
@@ -269,7 +377,9 @@ final class LessonRunner: ObservableObject {
             reset()
         } else {
             finished = true
-            Stats.shared.completed(lesson.id, time: Date().timeIntervalSince(start))
+            let t = Date().timeIntervalSince(start)
+            elapsed = t
+            Stats.shared.completed(lesson.id, time: t)
         }
     }
 
@@ -322,6 +432,7 @@ struct ExerciseView: View {
                 VStack(spacing: 8) {
                     Text(tr("Тренировка «\(runner.lesson.title)» пройдена", "Training “\(runner.lesson.title)” completed")).font(.title.bold())
                     Text(tr("Уровень: \(levelName(runner.lesson.level))", "Level: \(levelName(runner.lesson.level))")).font(.title3)
+                    Text(tr("Время: \(clock(runner.elapsed ?? 0))", "Time: \(clock(runner.elapsed ?? 0))")).font(.title3).monospacedDigit()
                     Text(tr("Enter — к выбору уровня", "Enter — back to levels")).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -330,6 +441,11 @@ struct ExerciseView: View {
                 HStack {
                     Text("\(runner.lesson.title) · \(levelName(runner.lesson.level))").font(.headline)
                     Spacer()
+                    TimelineView(.periodic(from: runner.start, by: 1)) { ctx in
+                        Label(clock(ctx.date.timeIntervalSince(runner.start)), systemImage: "stopwatch").monospacedDigit()
+                    }
+                    .foregroundStyle(.secondary)
+                    .help(tr("Время на тренировку", "Time spent on this training"))
                     Text("\(runner.index + 1) / \(runner.lesson.exercises.count)").foregroundStyle(.secondary)
                 }
                 Text(LocalizedStringKey(runner.exercise.task))
@@ -456,11 +572,13 @@ struct StatsView: View {
 // чтобы стрелку не приняли за часть команды
 struct HintSteps: View {
     let hint: String
+    var title: String?
+    var font = Font.system(.title3, design: .monospaced).weight(.semibold)
 
     var body: some View {
         let steps = hint.components(separatedBy: "  →  ")
         VStack(alignment: .leading, spacing: 4) {
-            Text(steps.count > 1 ? tr("Подсказка: по шагам, каждый отдельно", "Hint: step by step, one at a time") : tr("Подсказка", "Hint"))
+            Text((title ?? tr("Подсказка", "Hint")) + (steps.count > 1 ? tr(": по шагам, каждый отдельно", ": step by step, one at a time") : ""))
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(steps.indices, id: \.self) { i in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -469,8 +587,199 @@ struct HintSteps: View {
                     }
                     Text(steps[i])
                 }
-                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .font(font)
             }
         }
+    }
+}
+
+// MARK: экзамен
+
+struct ExamSetupView: View {
+    let start: (Int, ExamMode) -> Void
+    let back: () -> Void
+    @State private var level: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tr("Экзамен", "Exam")).font(.largeTitle.bold())
+            if let level {
+                Text(tr("Уровень: \(levelName(level)). Выбери вариант цифрой", "Level: \(levelName(level)). Choose a mode by number")).foregroundStyle(.secondary)
+                row(1, tr("До \(ExamRunner.maxMistakes) ошибок", "Up to \(ExamRunner.maxMistakes) mistakes"),
+                    tr("Экзамен закончится на \(ExamRunner.maxMistakes)-й ошибке", "The exam ends at mistake number \(ExamRunner.maxMistakes)")) { start(level, .limited) }
+                row(2, tr("Полный", "Full"),
+                    tr("Все \(ExamRunner.size) вопросов, ошибки считаются, но экзамен не прерывают", "All \(ExamRunner.size) questions, mistakes are counted but don't stop the exam")) { start(level, .full) }
+            } else {
+                Text(tr("\(ExamRunner.size) случайных вопросов, \(Int(ExamRunner.timeLimit) / 60) минут, подсказок нет. Выбери уровень цифрой", "\(ExamRunner.size) random questions, \(Int(ExamRunner.timeLimit) / 60) minutes, no hints. Choose a level by number")).foregroundStyle(.secondary)
+                ForEach(0..<3, id: \.self) { n in
+                    row(n + 1, levelName(n), tr("Вопросы из уровня «\(levelName(n))» всех тренировок", "Questions from the “\(levelName(n))” level of every training")) { level = n }
+                }
+            }
+            Text(tr("Ошибка — команда, которая завершилась ошибкой, или пропущенный вопрос.", "A mistake is a command that ends with an error, or a skipped question."))
+                .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
+            Spacer()
+            Button(tr("Назад (Esc)", "Back (Esc)")) {
+                if level == nil { back() } else { level = nil }
+            }
+            .keyboardShortcut(.cancelAction)
+        }
+        .padding(28)
+    }
+
+    private func row(_ n: Int, _ title: String, _ info: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                KeyCap(text: "\(n)")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline)
+                    Text(info).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: [])
+    }
+}
+
+struct ExamView: View {
+    @StateObject private var runner: ExamRunner
+    let back: () -> Void
+    @State private var selected = 0
+
+    init(level: Int, mode: ExamMode, back: @escaping () -> Void) {
+        _runner = StateObject(wrappedValue: ExamRunner(courses: terminalCourses, level: level, mode: mode))
+        self.back = back
+    }
+
+    var body: some View {
+        Group {
+            if runner.finished { results } else { question }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in runner.tick() }
+        .padding(20)
+        .background(KeyCatcher { key in
+            if runner.finished { return resultsKey(key) }
+            return runner.handle(key) { runner.finished = true }
+        })
+    }
+
+    private var question: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(tr("Экзамен · \(levelName(runner.level))", "Exam · \(levelName(runner.level))")).font(.headline)
+                Spacer()
+                Label(clock(runner.remaining), systemImage: "timer")
+                    .monospacedDigit()
+                    .foregroundColor(runner.remaining < 60 ? .red : .primary)
+                    .help(tr("Осталось времени", "Time left"))
+                Text(mistakesText).foregroundColor(runner.mistakes > 0 ? .red : .secondary)
+                Text("\(runner.index + 1) / \(runner.questions.count)").foregroundStyle(.secondary)
+            }
+            Text(runner.question.topic).font(.caption).foregroundStyle(.secondary)
+            Text(LocalizedStringKey(runner.question.exercise.task))
+                .font(.title3)
+                .fixedSize(horizontal: false, vertical: true)
+            TerminalScreen(term: runner.term)
+            if runner.solved {
+                Text(tr("✓ Верно! Enter — следующий вопрос", "✓ Correct! Enter — next question")).bold().foregroundColor(.green)
+            } else if runner.noHint {
+                Text(tr("На экзамене подсказок нет", "No hints during the exam")).foregroundColor(.orange)
+            } else {
+                Text(tr("⌘Enter пропустить (это ошибка)    ⌘R заново    Esc завершить", "⌘Enter skip (counts as a mistake)    ⌘R restart    Esc finish"))
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var mistakesText: String {
+        let n = runner.mistakes
+        return runner.mode == .limited
+            ? tr("ошибок \(n) из \(ExamRunner.maxMistakes)", "mistakes \(n) of \(ExamRunner.maxMistakes)")
+            : tr("ошибок \(n)", "mistakes \(n)")
+    }
+
+    // ↑↓ листают ответы, Enter и Esc возвращают к выбору экзамена
+    private func resultsKey(_ key: Key) -> Bool {
+        switch key.name {
+        case "up", "k": selected = max(0, selected - 1)
+        case "down", "j": selected = min(runner.answers.count - 1, selected + 1)
+        case "enter", "esc": back()
+        default: return !key.name.hasPrefix("cmd+")
+        }
+        return true
+    }
+
+    private var results: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.largeTitle.bold())
+            Text(tr("Верно \(runner.correct) из \(runner.questions.count), ошибок \(runner.mistakes), время \(clock(runner.spent))",
+                    "Correct \(runner.correct) of \(runner.questions.count), mistakes \(runner.mistakes), time \(clock(runner.spent))"))
+                .font(.title3)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(runner.answers.indices, id: \.self) { i in
+                            answerRow(i).id(i)
+                        }
+                    }
+                }
+                .onChange(of: selected) { i in withAnimation { proxy.scrollTo(i, anchor: .center) } }
+            }
+            Text(tr("↑↓ листать ответы    Enter — к выбору экзамена", "↑↓ scroll answers    Enter — back to exams")).font(.callout).foregroundStyle(.secondary)
+        }
+    }
+
+    private var title: String {
+        if runner.timeUp { return tr("Время вышло", "Time is up") }
+        if runner.failedByLimit { return tr("Экзамен не сдан: \(ExamRunner.maxMistakes) ошибки", "Exam failed: \(ExamRunner.maxMistakes) mistakes") }
+        return runner.correct == runner.questions.count ? tr("Экзамен сдан без ошибок", "Exam passed with no mistakes")
+            : runner.mistakes == 0 && runner.correct < runner.questions.count ? tr("Экзамен завершён досрочно", "Exam finished early")
+            : tr("Экзамен завершён", "Exam finished")
+    }
+
+    private func answerRow(_ i: Int) -> some View {
+        let a = runner.answers[i]
+        let reached = i <= runner.index
+        let (mark, color): (String, Color) = a.solved ? ("✓", .green) : reached ? ("✗", .red) : ("—", .secondary)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(mark).bold().foregroundColor(color).frame(width: 18)
+                Text("\(i + 1).").foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(a.question.topic).font(.caption).foregroundStyle(.secondary)
+                    Text(LocalizedStringKey(a.question.exercise.task)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                if !reached {
+                    Text(tr("Не дошёл до этого вопроса", "Didn't get to this question")).foregroundStyle(.secondary)
+                } else if a.commands.isEmpty {
+                    Text(a.skipped ? tr("Пропущен", "Skipped") : tr("Команд не было", "No commands")).foregroundColor(a.skipped ? .red : .secondary)
+                } else {
+                    Text(tr("Твои команды", "Your commands")).font(.caption).foregroundStyle(.secondary)
+                    ForEach(a.commands.indices, id: \.self) { c in
+                        let cmd = a.commands[c]
+                        HStack(spacing: 8) {
+                            Text(cmd.failed ? "✗" : "·").foregroundColor(cmd.failed ? .red : .secondary)
+                            Text(cmd.line).font(.system(.body, design: .monospaced)).foregroundColor(cmd.failed ? .red : .primary)
+                        }
+                    }
+                    if a.skipped { Text(tr("Потом пропущен", "Then skipped")).foregroundColor(.red) }
+                }
+                if !a.solved {
+                    HintSteps(hint: a.question.exercise.hint, title: tr("Правильный ответ", "Correct answer"),
+                              font: .system(.body, design: .monospaced).weight(.semibold))
+                    if !a.question.exercise.note.isEmpty {
+                        Text(LocalizedStringKey(a.question.exercise.note)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.leading, 46)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(i == selected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06)))
     }
 }

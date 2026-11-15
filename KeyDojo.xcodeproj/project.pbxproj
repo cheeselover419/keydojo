@@ -14,6 +14,9 @@
 		B10000000000000000000005 /* Lessons.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* Lessons.swift */; };
 		B10000000000000000000006 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* Localization.swift */; };
 		B10000000000000000000007 /* Stats.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* Stats.swift */; };
+		B10000000000000000000008 /* Exam.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* Exam.swift */; };
+		B10000000000000000000009 /* Sound.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* Sound.swift */; };
+		B10000000000000000000010 /* Sounds in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* Sounds */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +27,9 @@
 		B20000000000000000000005 /* Lessons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lessons.swift; sourceTree = "<group>"; };
 		B20000000000000000000006 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		B20000000000000000000007 /* Stats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stats.swift; sourceTree = "<group>"; };
+		B20000000000000000000008 /* Exam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exam.swift; sourceTree = "<group>"; };
+		B20000000000000000000009 /* Sound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sound.swift; sourceTree = "<group>"; };
+		B20000000000000000000010 /* Sounds */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Sounds; sourceTree = "<group>"; };
 		B20000000000000000000090 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000091 /* KeyDojo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyDojo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -38,6 +44,17 @@
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin PBXResourcesBuildPhase section */
+		B30000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000010 /* Sounds in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXGroup section */
 		B40000000000000000000001 = {
 			isa = PBXGroup;
@@ -49,6 +66,9 @@
 				B20000000000000000000005 /* Lessons.swift */,
 				B20000000000000000000006 /* Localization.swift */,
 				B20000000000000000000007 /* Stats.swift */,
+				B20000000000000000000008 /* Exam.swift */,
+				B20000000000000000000009 /* Sound.swift */,
+				B20000000000000000000010 /* Sounds */,
 				B20000000000000000000090 /* Info.plist */,
 				B40000000000000000000002 /* Products */,
 			);
@@ -71,6 +91,7 @@
 			buildPhases = (
 				B30000000000000000000001 /* Sources */,
 				B30000000000000000000002 /* Frameworks */,
+				B30000000000000000000003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -121,6 +142,8 @@
 				B10000000000000000000005 /* Lessons.swift in Sources */,
 				B10000000000000000000006 /* Localization.swift in Sources */,
 				B10000000000000000000007 /* Stats.swift in Sources */,
+				B10000000000000000000008 /* Exam.swift in Sources */,
+				B10000000000000000000009 /* Sound.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
