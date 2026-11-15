@@ -122,39 +122,52 @@ final class FileSystem {
         fs.put("/etc/hosts", "127.0.0.1 localhost\n")
         fs.put("~/.zshrc", "export PATH=\"/usr/local/bin:$PATH\"\nalias ll=\"ls -la\"\n")
         fs.put("~/.gitconfig", "[user]\n    name = student\n")
-        fs.put("~/notes.txt", """
+        fs.put("~/notes.txt", tr("""
             Заметки
             - выучить горячие клавиши терминала
             - разобраться с nano и vim
             - меньше трогать мышь
 
-            """)
-        fs.put("~/draft.txt", "черновик\n")
-        fs.put("~/old.log", "старый лог\n")
+            """, """
+            Notes
+            - learn terminal shortcuts
+            - figure out nano and vim
+            - touch the mouse less
+
+            """))
+        fs.put("~/draft.txt", tr("черновик\n", "draft\n"))
+        fs.put("~/old.log", tr("старый лог\n", "old log\n"))
         for f in ["a.tmp", "b.tmp", "c.tmp"] { fs.put("~/trash/" + f, "") }
-        fs.put("~/Documents/report.txt", "Отчёт за неделю\n")
-        fs.put("~/Documents/ideas.txt", "Идеи\n")
-        fs.put("~/Downloads/photo.jpg", "(картинка)\n")
-        fs.put("~/Downloads/installer.dmg", "(образ)\n")
-        fs.put("~/Desktop/screenshot.png", "(скриншот)\n")
-        fs.put("~/projects/app/README.md", """
+        fs.put("~/Documents/report.txt", tr("Отчёт за неделю\n", "Weekly report\n"))
+        fs.put("~/Documents/ideas.txt", tr("Идеи\n", "Ideas\n"))
+        fs.put("~/Downloads/photo.jpg", tr("(картинка)\n", "(image)\n"))
+        fs.put("~/Downloads/installer.dmg", tr("(образ)\n", "(disk image)\n"))
+        fs.put("~/Desktop/screenshot.png", tr("(скриншот)\n", "(screenshot)\n"))
+        fs.put("~/projects/app/README.md", tr("""
             # app
 
             Учебный проект.
 
             TODO: написать инструкцию по запуску
 
-            """)
+            """, """
+            # app
+
+            Practice project.
+
+            TODO: write how to run it
+
+            """))
         fs.put("~/projects/app/main.py", """
             from src.utils import greet
 
-            # TODO: обработать ошибки
+            # TODO: \(tr("обработать ошибки", "handle errors"))
             print(greet("world"))
 
             """)
         fs.put("~/projects/app/src/utils.py", """
             def greet(name):
-                # TODO: добавить тесты
+                # TODO: \(tr("добавить тесты", "add tests"))
                 return f"Hello, {name}!"
 
             """)
@@ -168,7 +181,7 @@ final class FileSystem {
             """)
         fs.put("~/projects/app/app.log", appLog)
         fs.put("~/projects/site/index.html", "<h1>Hello</h1>\n")
-        fs.put("~/projects/site/style.css", "/* TODO: тёмная тема */\nbody { margin: 0; }\n")
+        fs.put("~/projects/site/style.css", "/* TODO: \(tr("тёмная тема", "dark theme")) */\nbody { margin: 0; }\n")
         return fs
     }
 

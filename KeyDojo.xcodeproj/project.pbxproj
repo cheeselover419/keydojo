@@ -12,6 +12,8 @@
 		B10000000000000000000003 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* TerminalView.swift */; };
 		B10000000000000000000004 /* FileSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* FileSystem.swift */; };
 		B10000000000000000000005 /* Lessons.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* Lessons.swift */; };
+		B10000000000000000000006 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* Localization.swift */; };
+		B10000000000000000000007 /* Stats.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* Stats.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +22,8 @@
 		B20000000000000000000003 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		B20000000000000000000004 /* FileSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystem.swift; sourceTree = "<group>"; };
 		B20000000000000000000005 /* Lessons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Lessons.swift; sourceTree = "<group>"; };
+		B20000000000000000000006 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		B20000000000000000000007 /* Stats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stats.swift; sourceTree = "<group>"; };
 		B20000000000000000000090 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20000000000000000000091 /* KeyDojo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyDojo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -43,6 +47,8 @@
 				B20000000000000000000003 /* TerminalView.swift */,
 				B20000000000000000000004 /* FileSystem.swift */,
 				B20000000000000000000005 /* Lessons.swift */,
+				B20000000000000000000006 /* Localization.swift */,
+				B20000000000000000000007 /* Stats.swift */,
 				B20000000000000000000090 /* Info.plist */,
 				B40000000000000000000002 /* Products */,
 			);
@@ -113,6 +119,8 @@
 				B10000000000000000000003 /* TerminalView.swift in Sources */,
 				B10000000000000000000004 /* FileSystem.swift in Sources */,
 				B10000000000000000000005 /* Lessons.swift in Sources */,
+				B10000000000000000000006 /* Localization.swift in Sources */,
+				B10000000000000000000007 /* Stats.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

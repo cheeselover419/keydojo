@@ -552,7 +552,7 @@ final class Terminal: ObservableObject {
         case "find": return find(rest)
         case "grep": return grep(rest, stdin)
         case "clear": lines = []
-        case "nano", "vim", "vi", "less", "more": err("\(args[0]): в тренажёре запускай отдельно, без | и >")
+        case "nano", "vim", "vi", "less", "more": err(tr("\(args[0]): в тренажёре запускай отдельно, без | и >", "\(args[0]): run it on its own here, without | and >"))
         default: err("zsh: command not found: \(args[0])")
         }
         return ""
