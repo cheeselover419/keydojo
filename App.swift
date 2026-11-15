@@ -34,9 +34,15 @@ func showAbout() {
 }
 
 enum Training {
-    case terminal, vscode
+    case terminal, vscode, typing
 
-    var title: String { self == .terminal ? tr("Терминал", "Terminal") : "VS Code" }
+    var title: String {
+        switch self {
+        case .terminal: tr("Терминал", "Terminal")
+        case .vscode: "VS Code"
+        case .typing: tr("Скорость печати", "Typing speed")
+        }
+    }
 }
 
 enum Screen: Equatable {
@@ -67,8 +73,8 @@ struct ContentView: View {
                 ExamView(level: level, mode: mode) { screen = .exam }
             case .levels(let i):
                 LevelListView(course: terminalCourses[i], open: { screen = .exercise(i, $0) }, back: { screen = .lessons(.terminal) })
-            case .lessons(.vscode):
-                PlaceholderView(title: Training.vscode.title) { screen = .start }
+            case .lessons(let training):
+                PlaceholderView(title: training.title) { screen = .start }
             case .exercise(let i, let level):
                 ExerciseView(lesson: terminalCourses[i].levels[level]) { screen = .levels(i) }
             case .stats:
@@ -106,6 +112,7 @@ struct StartView: View {
             HStack(spacing: 16) {
                 choice(.terminal, key: "t", icon: "terminal")
                 choice(.vscode, key: "v", icon: "chevron.left.forwardslash.chevron.right")
+                choice(.typing, key: "p", icon: "keyboard")
             }
             HStack(spacing: 16) {
                 Button(action: stats) {
