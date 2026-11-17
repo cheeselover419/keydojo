@@ -34,12 +34,11 @@ func showAbout() {
 }
 
 enum Training {
-    case terminal, vscode, typing
+    case terminal, typing
 
     var title: String {
         switch self {
         case .terminal: tr("Терминал", "Terminal")
-        case .vscode: "VS Code"
         case .typing: tr("Скорость печати", "Typing speed")
         }
     }
@@ -84,8 +83,6 @@ struct ContentView: View {
                 TypingSetupView(start: { screen = .typingRun($0, $1) }, back: { screen = .start })
             case .typingRun(let l, let duration):
                 TypingView(mode: l, duration: duration) { screen = .lessons(.typing) }
-            case .lessons(.vscode):
-                PlaceholderView(title: Training.vscode.title) { screen = .start }
             case .exercise(let i, let level):
                 ExerciseView(lesson: terminalCourses[i].levels[level]) { screen = .levels(i) }
             case .stats:
@@ -122,7 +119,6 @@ struct StartView: View {
             }
             HStack(spacing: 16) {
                 choice(.terminal, key: "t", icon: "terminal")
-                choice(.vscode, key: "v", icon: "chevron.left.forwardslash.chevron.right")
                 choice(.typing, key: "p", icon: "keyboard")
             }
             HStack(spacing: 16) {
@@ -397,20 +393,6 @@ struct SettingsView: View {
         }
         .tint(selected ? .accentColor : nil)
         .buttonStyle(.bordered)
-    }
-}
-
-struct PlaceholderView: View {
-    let title: String
-    let back: () -> Void
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text(title).font(.largeTitle.bold())
-            Text(tr("Скоро", "Coming soon")).foregroundStyle(.secondary)
-            Button(tr("Назад (Esc)", "Back (Esc)"), action: back).keyboardShortcut(.cancelAction)
-        }
-        .padding()
     }
 }
 
